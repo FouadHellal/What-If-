@@ -501,7 +501,7 @@ function deriveInsights(
       kind: 'risk',
       severity: 'low',
       title: `Outcome hinges on “${top.label}”`,
-      detail: `Moving it between ${top.lowInput} and ${top.highInput} changes final net worth by ${formatMoney(top.swing, cur)}. Validate this assumption first.`,
+      detail: `Moving it between ${formatInput(top.key, top.lowInput, cur)} and ${formatInput(top.key, top.highInput, cur)} changes final net worth by ${formatMoney(top.swing, cur)}. Validate this assumption first.`,
     });
   }
 
@@ -647,4 +647,25 @@ export { flowPolarity };
 
 function fr(f: NormalizedModel['flows'][number]): { value: number; low: number | null; high: number | null } {
   return { value: f.amount, low: f.low, high: f.high };
+}
+
+/** Human-readable value of a variable or flow input, used in insight text. */
+function formatInput(key: string, value: number, currency: string): string {
+  if (key.startsWith('flow:')) return formatMoney(value, currency);
+  const def = getVariableDefinition(key as VariableKey);
+  switch (def.unit) {
+    case 'currency':
+    case 'currency_month':
+    case 'currency_year':
+      return formatMoney(value, currency);
+    case 'percent':
+    case 'percent_year':
+      return `${Math.round(value * 10) / 10} %`;
+    case 'months':
+      return `${Math.round(value)} months`;
+    case 'years':
+      return `${Math.round(value)} years`;
+    case 'hours_week':
+      return `${Math.round(value)} h/week`;
+  }
 }

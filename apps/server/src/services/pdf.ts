@@ -3,7 +3,7 @@ import type { ReportSnapshot } from '@whatif/shared';
 import { SOURCE_LABELS, categoryInfo } from '@whatif/shared';
 
 /** Scenario colours — kept in sync with the web palette (apps/web/src/styles/tokens.css). */
-export const SCENARIO_COLORS = ['#3D5A80', '#C46B3C', '#4F7A5A', '#8A5A9E', '#B3923A', '#4B8A99', '#A6505F', '#6B6B6B'];
+export const SCENARIO_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
 
 const INK = '#1C1B19';
 const MUTED = '#6B6863';
