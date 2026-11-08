@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ArrowLeft, ArrowRight, Briefcase, CircleAlert, GraduationCap, Home, MapPin, Plane, Plus, Repeat, Sparkles, Store, Sun, Trash2, TrendingUp, Users } from 'lucide-react';
-import { VARIABLES, getVariableDefinition, isVariableKey } from '@whatif/engine';
+import { VARIABLES } from '@whatif/engine';
 import { CATEGORIES, CURRENCIES, categoryInfo, type DecisionCategory, type DecisionDTO, type DecisionDraft, type ScenarioDraft } from '@whatif/shared';
 import { ApiError, get, post } from '../api/client';
 import { useAiSettings, useInvalidateDecision } from '../api/queries';
@@ -352,4 +352,3 @@ function DraftReview({
   );
 }
 
-export { isVariableKey, getVariableDefinition };

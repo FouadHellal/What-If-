@@ -1,5 +1,5 @@
-// Dev utility: captures screenshots of key pages for visual review.
-// Usage: node e2e/shoot.mjs <outDir> <decisionId> [theme]
+// Dev utility: captures screenshots of key pages for visual review (needs a running dev server).
+// Usage: SHOT_EMAIL=… SHOT_PASSWORD=… node scripts/screenshots.mjs <outDir> <decisionId> [theme]
 import { chromium } from '@playwright/test';
 const [outDir, decisionId, theme = 'light'] = process.argv.slice(2);
 const base = process.env.BASE_URL ?? 'http://localhost:5173';

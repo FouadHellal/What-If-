@@ -358,4 +358,3 @@ function MilestoneDialog({ ctx, value, onClose }: { ctx: WorkspaceContext; value
   );
 }
 
-export { monthNumberToDate };

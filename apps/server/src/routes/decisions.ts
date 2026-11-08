@@ -246,6 +246,9 @@ export async function decisionRoutes(app: FastifyInstance) {
     const { id } = parse(idParam, request.params);
     const input = parse(updateScenarioMetaSchema, request.body);
     const s = await loadScenario(db, user.id, id);
+    if (input.isBaseline === false && s.isBaseline) {
+      throw badRequest('Every decision needs a baseline. Make another scenario the baseline instead.');
+    }
     await db.transaction(async (tx) => {
       if (input.isBaseline === true) {
         await tx.update(scenarios).set({ isBaseline: false }).where(eq(scenarios.decisionId, s.decisionId));
@@ -450,9 +453,6 @@ export async function decisionRoutes(app: FastifyInstance) {
     return rows[0].m;
   }
 
-  void inArray;
-  void loadScenariosForDecision;
-  void addMonths;
 }
 
 function nextMonth(): string {

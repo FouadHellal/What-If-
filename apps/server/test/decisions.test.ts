@@ -209,6 +209,7 @@ describe('scenario editing, versioning and isolation', () => {
     const after = (await alice.get(`/api/decisions/${d.id}`)).json() as DecisionDTO;
     expect(after.scenarios.filter((s) => s.isBaseline).map((s) => s.id)).toEqual([other.id]);
     expect((await alice.patch(`/api/scenarios/${other.id}`, { status: 'archived' })).statusCode).toBe(400);
+    expect((await alice.patch(`/api/scenarios/${other.id}`, { isBaseline: false })).statusCode).toBe(400);
   });
 });
 
