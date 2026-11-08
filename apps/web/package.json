@@ -1,0 +1,32 @@
+{
+  "name": "@whatif/web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc -p ."
+  },
+  "devDependencies": {
+    "@fontsource-variable/inter": "^5.2.0",
+    "@fontsource-variable/source-serif-4": "^5.2.0",
+    "@tanstack/react-query": "^5.90.0",
+    "@testing-library/jest-dom": "^6.6.0",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "@whatif/engine": "1.0.0",
+    "@whatif/shared": "1.0.0",
+    "jsdom": "^26.1.0",
+    "lucide-react": "^0.577.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router": "^7.9.0",
+    "vite": "^7.1.0"
+  }
+}

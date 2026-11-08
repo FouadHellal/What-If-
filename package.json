@@ -1,0 +1,33 @@
+{
+  "name": "what-if",
+  "version": "1.0.0",
+  "private": true,
+  "description": "What-If — a self-hosted decision-intelligence and future-simulation platform.",
+  "license": "UNLICENSED",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "npm run dev --workspace @whatif/server & npm run dev --workspace @whatif/web",
+    "dev:server": "npm run dev --workspace @whatif/server",
+    "dev:web": "npm run dev --workspace @whatif/web",
+    "build": "npm run build --workspace @whatif/web && npm run build --workspace @whatif/server",
+    "typecheck": "tsc -p packages/engine && tsc -p packages/shared && tsc -p apps/server && tsc -p apps/web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "db:generate": "npm run db:generate --workspace @whatif/server",
+    "db:migrate": "npm run db:migrate --workspace @whatif/server",
+    "start": "node apps/server/dist/index.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.65.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.12"
+  }
+}
