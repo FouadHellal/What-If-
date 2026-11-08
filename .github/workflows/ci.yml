@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'feat/**']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Typecheck, unit & integration tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: whatif
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: whatif_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U whatif" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - name: Tests (embedded PostgreSQL)
+        run: npx vitest run
+      - name: Server tests (PostgreSQL 17)
+        run: npx vitest run --project server
+        env:
+          TEST_DATABASE_URL: postgres://whatif:ci-only-password@localhost:5432/whatif_test
+
+  e2e:
+    name: End-to-end (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: test-results/
+          retention-days: 7
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t what-if:ci .
+      - name: Smoke test with Docker Compose
+        run: |
+          cat > .env <<'ENV'
+          APP_SECRET=ci-only-secret-ci-only-secret-ci-only-secret
+          POSTGRES_PASSWORD=ci-only-password
+          ENV
+          docker compose up -d --build
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/api/health; then echo; break; fi
+            sleep 3
+          done
+          curl -fsS http://127.0.0.1:3000/api/health | grep '"database":"ok"'
+          curl -fsS -o /dev/null http://127.0.0.1:3000/
+          docker compose logs app | tail -20
+          docker compose down -v

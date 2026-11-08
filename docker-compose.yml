@@ -1,0 +1,87 @@
+# What-If — production deployment for a single Linux VM.
+#
+#   cp .env.example .env      # then set APP_SECRET and POSTGRES_PASSWORD
+#   docker compose up -d --build
+#
+# The app listens on 127.0.0.1:${WHATIF_PORT:-3000} by default (not exposed to
+# the network). Put a reverse proxy in front of it for TLS — see deploy/.
+
+name: what-if
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-whatif}
+      POSTGRES_USER: ${POSTGRES_USER:-whatif}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # Modest settings for a small VM; raise for larger installations.
+    command: ['postgres', '-c', 'shared_buffers=128MB', '-c', 'max_connections=40']
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '5'
+    networks: [internal]
+
+  app:
+    build:
+      context: .
+      args:
+        APP_VERSION: ${APP_VERSION:-1.0.0}
+    image: what-if:${APP_VERSION:-1.0.0}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-whatif}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-whatif}
+      APP_SECRET: ${APP_SECRET:?Set APP_SECRET in .env (openssl rand -base64 48)}
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-auto}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      MIGRATE_ON_START: 'true'
+      AI_PROVIDER: ${AI_PROVIDER:-}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_MODEL: ${AI_MODEL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_DAILY_LIMIT: ${AI_DAILY_LIMIT:-50}
+      AI_ALLOW_USER_CONFIG: ${AI_ALLOW_USER_CONFIG:-true}
+    ports:
+      - '${WHATIF_BIND:-127.0.0.1}:${WHATIF_PORT:-3000}:3000'
+    # Lets a local Ollama on the host be reached at http://host.docker.internal:11434
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging: *logging
+    networks: [internal, default]
+
+volumes:
+  db-data:
+
+networks:
+  internal:
+    internal: true

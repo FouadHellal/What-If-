@@ -39,7 +39,29 @@ let shared: Database | null = null;
 /** One embedded PostgreSQL per test file; each test file gets fresh schema via migrations. */
 export async function createTestApp(overrides: Partial<Config> = {}, env: Record<string, string> = {}): Promise<TestApp> {
   const config = loadConfig({ NODE_ENV: 'test', LOG_LEVEL: 'silent', SCRYPT_COST: '1024', AUTH_RATE_LIMIT_PER_MINUTE: '1000', RATE_LIMIT_PER_MINUTE: '100000', ...env }, overrides);
-  const database = await openDatabase('pglite:memory');
+  // TEST_DATABASE_URL=postgres://… runs the suite against a real PostgreSQL server,
+  // using a throwaway database per test file. Default: embedded PostgreSQL (PGlite).
+  const external = process.env.TEST_DATABASE_URL;
+  let dropDb: (() => Promise<void>) | null = null;
+  let url = 'pglite:memory';
+  if (external) {
+    const pg = (await import('pg')).default;
+    const name = `wi_test_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const admin = new pg.Client({ connectionString: external });
+    await admin.connect();
+    await admin.query(`CREATE DATABASE ${name}`);
+    await admin.end();
+    const u = new URL(external);
+    u.pathname = `/${name}`;
+    url = u.toString();
+    dropDb = async () => {
+      const c = new pg.Client({ connectionString: external });
+      await c.connect();
+      await c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+      await c.end();
+    };
+  }
+  const database = await openDatabase(url, { poolMax: 5 });
   await database.migrate();
   shared = database;
   const ai = fakeAi();
@@ -53,6 +75,7 @@ export async function createTestApp(overrides: Partial<Config> = {}, env: Record
     close: async () => {
       await app.close();
       await database.close();
+      await dropDb?.();
       shared = null;
     },
   };

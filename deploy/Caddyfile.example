@@ -1,0 +1,14 @@
+# Example reverse proxy with automatic HTTPS (Caddy 2).
+# For a private network, use an internal name and `tls internal`.
+# Set PUBLIC_URL=https://whatif.example.com and TRUST_PROXY=true in .env.
+
+whatif.example.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3000
+}
+
+# Private LAN / Tailscale example:
+# whatif.home.arpa {
+# 	tls internal
+# 	reverse_proxy 127.0.0.1:3000
+# }

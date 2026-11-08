@@ -5,6 +5,8 @@ import { defineConfig, devices } from '@playwright/test';
  * the real server, with a fresh in-memory PostgreSQL (PGlite) per run.
  */
 const PORT = 3100;
+// Set E2E_BASE_URL to test an already running instance (e.g. one backed by PostgreSQL).
+const external = process.env.E2E_BASE_URL;
 
 export default defineConfig({
   testDir: 'e2e',
@@ -16,7 +18,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? 'github' : 'list',
   use: {
-    baseURL: `http://127.0.0.1:${PORT}`,
+    baseURL: external ?? `http://127.0.0.1:${PORT}`,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
@@ -24,7 +26,9 @@ export default defineConfig({
     { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } }, testIgnore: '**/mobile.spec.ts' },
     { name: 'mobile', use: { ...devices['Pixel 7'] }, testMatch: '**/mobile.spec.ts' },
   ],
-  webServer: {
+  webServer: external
+    ? undefined
+    : {
     command: 'node apps/server/dist/index.js',
     url: `http://127.0.0.1:${PORT}/api/health`,
     reuseExistingServer: false,
