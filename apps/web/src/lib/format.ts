@@ -106,6 +106,8 @@ export function unitSuffix(unit: VariableUnit, currency: string): string {
       return 'years';
     case 'hours_week':
       return 'h/week';
+    case 'per_year':
+      return 'a year';
   }
 }
 
@@ -127,6 +129,8 @@ export function formatUnit(v: number | null | undefined, unit: VariableUnit, cur
       return `${number(v)} yr`;
     case 'hours_week':
       return `${number(v)} h/wk`;
+    case 'per_year':
+      return `${number(v, 1)} a year`;
   }
 }
 

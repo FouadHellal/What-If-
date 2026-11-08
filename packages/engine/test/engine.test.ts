@@ -279,7 +279,7 @@ describe('cases and uncertainty', () => {
   });
 
   it('collapses bands when nothing is uncertain', () => {
-    const r = simulate(model({ grossAnnualIncome: u(40_000), livingCostMonthly: u(1_000) }, { horizonYears: 3 }));
+    const r = simulate(model({ grossAnnualIncome: u(40_000), livingCostMonthly: u(1_000), inflationVolatility: u(0) }, { horizonYears: 3 }));
     expect(r.uncertainty!.hasUncertainty).toBe(false);
     expect(r.uncertainty!.finalNetWorth.p10).toBe(r.uncertainty!.finalNetWorth.p90);
     expect(r.uncertainty!.finalNetWorth.p50).toBe(r.expected.summary.finalNetWorth);

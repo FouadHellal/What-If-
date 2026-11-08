@@ -1,38 +1,21 @@
+import { LIFE_DIMENSIONS, lifeQuality, type LifeKey } from './analysis';
 import type { CaseName, SimulationResult } from './types';
 import { addMonths, monthNumber, monthNumberToDate, round2 } from './util';
 
-/** Qualitative factors a person can weigh, scored 1–5 per scenario. */
-export const PRIORITY_FACTORS = [
-  { key: 'financial', label: 'Financial security', description: 'Stability, savings and protection against shocks.' },
-  { key: 'career', label: 'Career growth', description: 'Skills, progression and professional opportunities.' },
-  { key: 'time', label: 'Free time & wellbeing', description: 'Time for rest, health and the things you enjoy.' },
-  { key: 'relationships', label: 'Family & relationships', description: 'Closeness to the people who matter to you.' },
-  { key: 'lifestyle', label: 'Place & lifestyle', description: 'Where and how you live day to day.' },
-  { key: 'growth', label: 'Personal growth', description: 'Learning, adventure and meaning.' },
-] as const;
+/** Life-quality dimensions a person can weigh, scored 1–5 per scenario (v2: ten dimensions). */
+export const PRIORITY_FACTORS = LIFE_DIMENSIONS;
 
-export type PriorityKey = (typeof PRIORITY_FACTORS)[number]['key'];
-export type PriorityWeights = Partial<Record<PriorityKey, number>>;
-export type ScenarioScores = Partial<Record<PriorityKey, number>>;
+export type PriorityKey = LifeKey;
+export type PriorityWeights = Partial<Record<string, number>>;
+export type ScenarioScores = Partial<Record<string, number>>;
 
 /**
  * Weighted fit of a scenario against personal priorities (0–100).
- * score_k ∈ [1,5], weight_k ∈ [0,5]. Unscored factors are excluded.
- * Returns null when nothing is scored or all weights are zero.
+ * score_k ∈ [1,5], weight_k ∈ [0,5] (default 3). Unscored dimensions are excluded,
+ * v1 factor names are mapped onto v2 dimensions. Null when nothing is scored.
  */
 export function priorityFit(scores: ScenarioScores, weights: PriorityWeights): number | null {
-  let num = 0;
-  let den = 0;
-  for (const f of PRIORITY_FACTORS) {
-    const s = scores[f.key];
-    const w = weights[f.key] ?? 3;
-    if (typeof s !== 'number' || !Number.isFinite(s) || w <= 0) continue;
-    const clamped = Math.min(5, Math.max(1, s));
-    num += w * (clamped - 1);
-    den += w * 4;
-  }
-  if (den === 0) return null;
-  return Math.round((num / den) * 100);
+  return lifeQuality(scores, weights).score;
 }
 
 export interface ComparableScenario {

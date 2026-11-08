@@ -17,7 +17,8 @@ export type VariableUnit =
   | 'percent_year' // annual rate in percentage points
   | 'months'
   | 'years'
-  | 'hours_week';
+  | 'hours_week'
+  | 'per_year'; // events per year
 
 /**
  * Polarity tells the engine which direction is favourable, so that it can
@@ -40,14 +41,22 @@ export type VariableKey =
   | 'incomeStartMonth'
   | 'employmentProbability'
   | 'extendedSearchMonths'
+  | 'jobLossProbability'
+  | 'unemploymentMonths'
   // living costs
   | 'housingCostMonthly'
   | 'livingCostMonthly'
   | 'inflationRate'
+  | 'housingGrowthRate'
+  | 'unexpectedExpenseRate'
+  | 'unexpectedExpenseSize'
+  | 'inflationVolatility'
   // saving & investing
   | 'monthlyInvestment'
   | 'investmentReturn'
   | 'cashInterestRate'
+  | 'investmentVolatility'
+  | 'emergencyFundMonths'
   // property
   | 'propertyPrice'
   | 'propertyPurchaseMonth'
@@ -71,7 +80,18 @@ export interface VariableInput {
   note?: string | null;
 }
 
-export type FlowKind = 'income' | 'expense' | 'one_time_income' | 'one_time_expense' | 'time';
+export type FlowKind =
+  | 'income'
+  | 'expense'
+  | 'one_time_income'
+  | 'one_time_expense'
+  | 'time'
+  /** Replaces the base salary with a new gross annual salary from startMonth (until endMonth). Taxed. */
+  | 'salary_change'
+  /** No salary between startMonth and endMonth (career break, studies, unemployment). */
+  | 'income_gap'
+  /** Loan received at startMonth (amount = principal), repaid as an annuity at `rate` over `termMonths`. */
+  | 'loan';
 
 export interface FlowInput {
   id: string;
@@ -90,10 +110,46 @@ export interface FlowInput {
   startMonth: number;
   /** Exclusive end month index. `null` = until the end of the horizon. Ignored for one-time flows. */
   endMonth?: number | null;
-  /** Annual growth in percentage points. `null` = inflation for expenses, 0 for income. */
+  /** Annual growth in percentage points. `null` = inflation for expenses, 0 for income, salary growth for salary changes. */
   annualGrowth?: number | null;
+  /** Loans only: annual interest rate in percentage points. */
+  rate?: number | null;
+  /** Loans only: repayment period in months. */
+  termMonths?: number | null;
   source: ValueSource;
   note?: string | null;
+}
+
+export interface TaxBracket {
+  /** Upper limit of annual taxable income for this bracket; `null` = no limit. */
+  upTo: number | null;
+  /** Marginal rate in percentage points. */
+  rate: number;
+}
+
+/** A user-defined progressive schedule applied to gross salary. */
+export interface TaxSchedule {
+  brackets: TaxBracket[];
+  /** Tax-free allowance deducted before brackets apply. */
+  allowance?: number;
+  /** Flat social contributions on top, in percentage points of gross. */
+  flatRate?: number;
+}
+
+export interface GoalSpec {
+  id: string;
+  label: string;
+  /** `net_worth_at`: net worth ≥ target at `month` (or horizon end). `cash_floor`: cash never below target. */
+  kind: 'net_worth_at' | 'cash_floor';
+  /** In the scenario's currency. */
+  target: number;
+  month?: number | null;
+}
+
+export interface GoalResult extends GoalSpec {
+  achievedInExpected: boolean;
+  /** Share of simulated futures (0–1) meeting the goal; null when no uncertainty is modelled. */
+  probability: number | null;
 }
 
 export interface ScenarioModel {
@@ -106,6 +162,8 @@ export interface ScenarioModel {
   exchangeRateToBase?: number;
   variables: Partial<Record<VariableKey, VariableInput>>;
   flows: FlowInput[];
+  /** Optional progressive tax. When absent, effectiveTaxRate applies. */
+  tax?: TaxSchedule | null;
 }
 
 export interface SimulationOptions {
@@ -115,6 +173,10 @@ export interface SimulationOptions {
   runs?: number;
   /** Skip uncertainty + sensitivity (used for fast intermediate calculations). */
   quick?: boolean;
+  /** Goals to evaluate, in the scenario's currency. */
+  goals?: GoalSpec[];
+  /** `default` applies the documented correlations between inputs; `none` treats them as independent. */
+  correlations?: 'default' | 'none';
 }
 
 export type CaseName = 'expected' | 'best' | 'worst';
@@ -125,6 +187,22 @@ export interface ResolvedParams {
   /** Effective month when salary starts (after job-search delay and employment outcome). */
   effectiveIncomeStart: number;
   flows: ResolvedFlow[];
+  /** Whether rent growth was set explicitly (otherwise it follows inflation). */
+  housingGrowthSet?: boolean;
+  tax?: TaxSchedule | null;
+  /** Monte Carlo paths. Absent in deterministic cases, which use expected values instead. */
+  stochastic?: StochasticPaths;
+}
+
+export interface StochasticPaths {
+  /** Annual investment return per scenario year, as a fraction. */
+  returns: number[];
+  /** Annual inflation per scenario year, as a fraction. */
+  inflation: number[];
+  /** Income interruptions from job loss: [startMonth, endMonth). */
+  gaps: [number, number][];
+  /** Unexpected expenses by month index, in today's money (inflated when applied). */
+  shocks: Map<number, number>;
 }
 
 export interface ResolvedFlow {
@@ -136,6 +214,8 @@ export interface ResolvedFlow {
   startMonth: number;
   endMonth: number | null;
   annualGrowth: number | null;
+  rate: number | null;
+  termMonths: number | null;
 }
 
 export interface MonthPoint {
@@ -153,6 +233,7 @@ export interface MonthPoint {
   oneTimeIncome: number;
   propertyCosts: number;
   debtPayments: number;
+  unexpectedExpenses: number;
   totalExpenses: number;
   netCashFlow: number;
   investmentContribution: number;
@@ -218,6 +299,11 @@ export interface ProjectionSummary {
   avgFreeHoursPerWeekYear1: number;
   effectiveIncomeStart: number;
   monthlyMortgagePayment: number | null;
+  /** Effective tax rate in year 1 (percentage points), from the flat rate or the schedule. */
+  effectiveTaxRateYear1: number;
+  emergencyFundMonths: number;
+  /** First month cash covers the emergency-fund target (null if never / already at start). */
+  emergencyFundReachedMonth: number | null;
 }
 
 export interface Projection {
@@ -257,6 +343,25 @@ export interface UncertaintyResult {
   shortfallProbability: number;
   /** Share of runs (0–1) that ended below starting net worth. */
   lossProbability: number;
+  /** Final net worth per run, in run order (common random numbers make runs comparable across scenarios). */
+  samples: number[];
+  methodology: UncertaintyMethodology;
+}
+
+export interface UncertaintyMethodology {
+  runs: number;
+  seed: number;
+  distribution: 'triangular';
+  correlated: boolean;
+  correlationPairs: { a: VariableKey; b: VariableKey; rho: number }[];
+  investmentVolatility: number;
+  inflationVolatility: number;
+  jobLossProbability: number;
+  unemploymentMonths: number;
+  unexpectedExpenseRate: number;
+  unexpectedExpenseSize: number;
+  employmentProbability: number;
+  rangedInputs: string[];
 }
 
 export interface SensitivityItem {
@@ -334,4 +439,5 @@ export interface SimulationResult {
   insights: Insight[];
   explanation: ExplanationLine[];
   warnings: SimulationWarning[];
+  goals: GoalResult[];
 }

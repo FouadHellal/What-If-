@@ -63,16 +63,10 @@ export const deleteAccountSchema = z.object({
 
 // ── Profile / baseline ──────────────────────────────────────────────────────
 
-export const priorityWeightsSchema = z
-  .object({
-    financial: z.number().int().min(0).max(5),
-    career: z.number().int().min(0).max(5),
-    time: z.number().int().min(0).max(5),
-    relationships: z.number().int().min(0).max(5),
-    lifestyle: z.number().int().min(0).max(5),
-    growth: z.number().int().min(0).max(5),
-  })
-  .partial();
+/** Life-quality dimension keys (v2) plus v1 names that are still accepted and mapped. */
+export const LIFE_KEYS = ['career', 'freedom', 'time', 'family', 'social', 'lifestyle', 'health', 'learning', 'stability', 'growth', 'financial', 'relationships'] as const;
+const lifeKey = z.enum(LIFE_KEYS);
+export const priorityWeightsSchema = z.partialRecord(lifeKey, z.number().int().min(0).max(5));
 
 const optMoney = z.number().finite().min(0).max(MAX_MONEY).nullable().optional();
 const optText = (max: number) => z.string().trim().max(max).nullable().optional();
@@ -122,7 +116,7 @@ export const variablesSchema = z.partialRecord(variableKeyEnum, variableInputSch
 export const flowSchema = z
   .object({
     id: z.string().min(1).max(64),
-    kind: z.enum(['income', 'expense', 'one_time_income', 'one_time_expense', 'time']),
+    kind: z.enum(['income', 'expense', 'one_time_income', 'one_time_expense', 'time', 'salary_change', 'income_gap', 'loan']),
     label: z.string().trim().min(1, 'Give this item a name').max(120),
     amount: z.number().finite().min(0, 'Amounts cannot be negative — choose income or expense instead').max(MAX_MONEY).nullable(),
     low: z.number().finite().min(0).max(MAX_MONEY).nullable().optional(),
@@ -131,6 +125,8 @@ export const flowSchema = z
     startMonth: z.number().int().min(0).max(MAX_HORIZON_YEARS * 12),
     endMonth: z.number().int().min(1).max(MAX_HORIZON_YEARS * 12).nullable().optional(),
     annualGrowth: z.number().finite().min(-50).max(100).nullable().optional(),
+    rate: z.number().finite().min(0).max(100).nullable().optional(),
+    termMonths: z.number().int().min(1).max(600).nullable().optional(),
     source: valueSource,
     note: z.string().max(500).nullable().optional(),
   })
@@ -139,16 +135,16 @@ export const flowSchema = z
     path: ['endMonth'],
   });
 
-export const scoresSchema = z
-  .object({
-    financial: z.number().int().min(1).max(5),
-    career: z.number().int().min(1).max(5),
-    time: z.number().int().min(1).max(5),
-    relationships: z.number().int().min(1).max(5),
-    lifestyle: z.number().int().min(1).max(5),
-    growth: z.number().int().min(1).max(5),
-  })
-  .partial();
+export const scoresSchema = z.partialRecord(lifeKey, z.number().int().min(1).max(5));
+
+export const taxScheduleSchema = z.object({
+  brackets: z
+    .array(z.object({ upTo: z.number().finite().min(0).max(MAX_MONEY).nullable(), rate: z.number().finite().min(0).max(100) }))
+    .min(1)
+    .max(20),
+  allowance: z.number().finite().min(0).max(MAX_MONEY).optional(),
+  flatRate: z.number().finite().min(0).max(100).optional(),
+});
 
 export const scenarioModelSchema = z.object({
   startDate: monthString,
@@ -159,8 +155,74 @@ export const scenarioModelSchema = z.object({
   variables: variablesSchema,
   flows: z.array(flowSchema).max(60),
   scores: scoresSchema.optional(),
+  tax: taxScheduleSchema.nullable().optional(),
 });
 export type ScenarioModelInput = z.infer<typeof scenarioModelSchema>;
+
+// ── Decision settings ───────────────────────────────────────────────────────
+
+export const goalSchema = z.object({
+  id: z.string().min(1).max(40),
+  label: z.string().trim().min(1).max(120),
+  kind: z.enum(['net_worth_at', 'cash_floor']),
+  /** In the decision's base currency. */
+  target: z.number().finite().min(-MAX_MONEY).max(MAX_MONEY),
+  /** YYYY-MM for net_worth_at; null means the end of the horizon. */
+  date: monthString.nullable().optional(),
+});
+export type GoalInput = z.infer<typeof goalSchema>;
+
+export const decisionMemorySchema = z.object({
+  objectives: z.string().trim().max(2000).optional(),
+  riskStance: z.enum(['cautious', 'balanced', 'adventurous']).nullable().optional(),
+  constraints: z.string().trim().max(2000).optional(),
+  /** Short facts the person confirmed during analyst conversations. */
+  facts: z.array(z.string().trim().min(1).max(300)).max(30).optional(),
+});
+export type DecisionMemory = z.infer<typeof decisionMemorySchema>;
+
+export const decisionSettingsSchema = z.object({
+  runs: z.number().int().min(100).max(5000).optional(),
+  correlations: z.enum(['default', 'none']).optional(),
+  goals: z.array(goalSchema).max(6).optional(),
+  memory: decisionMemorySchema.optional(),
+});
+export type DecisionSettings = z.infer<typeof decisionSettingsSchema>;
+
+// ── Experiments (Decision Lab) ──────────────────────────────────────────────
+
+export const experimentInputSchema = z.object({
+  scenarioId: z.uuid(),
+  name: z.string().trim().min(1).max(120),
+  note: z.string().trim().max(2000).nullable().optional(),
+  /** Inputs changed relative to the scenario: variable key or flow:<id> → new value. */
+  changes: z.record(z.string().max(80), z.number().finite().min(-MAX_MONEY).max(MAX_MONEY)).refine((c) => Object.keys(c).length <= 40, 'Too many changes'),
+});
+
+// ── Evidence (external data with citations) ─────────────────────────────────
+
+export const evidenceInputSchema = z.object({
+  scenarioId: z.uuid().nullable().optional(),
+  label: z.string().trim().min(1).max(200),
+  value: z.number().finite().min(-MAX_MONEY).max(MAX_MONEY).nullable(),
+  unit: z.string().trim().max(40).nullable().optional(),
+  sourceName: z.string().trim().min(1).max(200),
+  sourceUrl: z.url({ protocol: /^https?$/ }).max(1000).nullable().optional(),
+  retrievedOn: dateString,
+  coverage: z.string().trim().max(200).nullable().optional(),
+  uncertainty: z.string().trim().max(300).nullable().optional(),
+  note: z.string().trim().max(1000).nullable().optional(),
+});
+
+export const researchRequestSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('exchange_rate'), from: currencyCode, to: currencyCode }),
+  z.object({ kind: z.literal('inflation'), country: z.string().trim().min(2).max(80) }),
+]);
+
+export const aiChatSchema = z.object({
+  message: z.string().trim().min(1).max(2000),
+  scenarioId: z.uuid().nullable().optional(),
+});
 
 export const assumptionCategory = z.enum(['assumption', 'risk', 'opportunity', 'question']);
 
@@ -215,6 +277,7 @@ export const updateDecisionSchema = z.object({
   baseCurrency: currencyCode.optional(),
   horizonYears: z.number().int().min(MIN_HORIZON_YEARS).max(MAX_HORIZON_YEARS).optional(),
   priorities: priorityWeightsSchema.nullable().optional(),
+  settings: decisionSettingsSchema.optional(),
 });
 
 export const recordDecisionSchema = z.object({

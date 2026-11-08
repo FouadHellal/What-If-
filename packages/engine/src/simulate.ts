@@ -4,6 +4,8 @@ import { project, type ProjectionContext } from './project';
 import type {
   CaseName,
   CaseResult,
+  GoalResult,
+  GoalSpec,
   DerivedMilestone,
   ExplanationLine,
   Insight,
@@ -17,10 +19,10 @@ import type {
   UncertaintyResult,
   VariableKey,
 } from './types';
+import { cholesky, lognormalReturn, normal, normalCdf, stream } from './random';
 import {
   addMonths,
   annuityPayment,
-  createRandom,
   formatMoney,
   formatMonthLabel,
   hashString,
@@ -30,7 +32,8 @@ import {
   stableStringify,
 } from './util';
 
-export const ENGINE_VERSION = '1.0.0';
+export const ENGINE_VERSION = '2.0.0';
+export const MAX_RUNS = 5000;
 export const DEFAULT_RUNS = 500;
 export const DEFAULT_SEED = 20260101;
 
@@ -43,13 +46,16 @@ export function hashInputs(model: ScenarioModel, options: SimulationOptions = {}
       seed: options.seed ?? DEFAULT_SEED,
       runs: options.runs ?? DEFAULT_RUNS,
       quick: options.quick ?? false,
+      goals: options.goals ?? [],
+      correlations: options.correlations ?? 'default',
     }),
   );
 }
 
 export function simulate(model: ScenarioModel, options: SimulationOptions = {}): SimulationResult {
   const seed = (options.seed ?? DEFAULT_SEED) >>> 0;
-  const runs = Math.max(20, Math.min(5000, Math.round(options.runs ?? DEFAULT_RUNS)));
+  const runs = Math.max(20, Math.min(MAX_RUNS, Math.round(options.runs ?? DEFAULT_RUNS)));
+  const goals = (options.goals ?? []).slice(0, 10);
   const nm = normalizeModel(model);
   const ctx: ProjectionContext = { startDate: nm.startDate, horizonMonths: nm.horizonMonths };
 
@@ -60,7 +66,18 @@ export function simulate(model: ScenarioModel, options: SimulationOptions = {}):
   cases.best = toCase('best', project(resolveCase(nm, 'best'), ctx, true));
   cases.worst = toCase('worst', project(resolveCase(nm, 'worst'), ctx, true));
 
-  const uncertainty = options.quick ? null : runUncertainty(nm, ctx, seed, runs);
+  const unc = options.quick ? null : runUncertainty(nm, ctx, seed, runs, goals, options.correlations ?? 'default');
+  const uncertainty: UncertaintyResult | null = unc ? unc.result : null;
+  const goalResults: GoalResult[] = goals.map((g, i) => {
+    const m = g.kind === 'net_worth_at' ? Math.min(nm.horizonMonths - 1, Math.max(0, Math.round(g.month ?? nm.horizonMonths - 1))) : -1;
+    const achievedInExpected = g.kind === 'cash_floor' ? expected.summary.lowestCash >= g.target : (expected.months[m]?.netWorth ?? -Infinity) >= g.target;
+    return {
+      ...g,
+      month: g.kind === 'net_worth_at' ? m : null,
+      achievedInExpected,
+      probability: unc && unc.result.hasUncertainty ? round2(unc.goalHits[i] ?? 0) : null,
+    };
+  });
   const sensitivity = options.quick ? [] : runSensitivity(nm, ctx, expectedParams, expected.summary.finalNetWorth);
   const milestones = deriveMilestones(nm, expectedParams, expected);
   const insights = deriveInsights(nm, expected, cases, uncertainty, sensitivity);
@@ -80,6 +97,7 @@ export function simulate(model: ScenarioModel, options: SimulationOptions = {}):
     insights,
     explanation,
     warnings: nm.warnings,
+    goals: goalResults,
   };
 }
 
@@ -116,67 +134,220 @@ function percentiles(values: number[]): Percentiles {
   };
 }
 
-function runUncertainty(nm: NormalizedModel, ctx: ProjectionContext, seed: number, runs: number): UncertaintyResult {
-  const rangedVars = VARIABLES.filter((d) => hasRange(nm.variables[d.key]));
-  const rangedFlows = nm.flows.filter((f) => hasRange(fr(f)));
-  const employmentRisk = nm.variables.employmentProbability.value < 100 || hasRange(nm.variables.employmentProbability);
-  const hasUncertainty = rangedVars.length > 0 || rangedFlows.length > 0 || employmentRisk;
+/** Documented default correlations between uncertain inputs (Gaussian copula). */
+export const DEFAULT_CORRELATIONS: { a: VariableKey; b: VariableKey; rho: number }[] = [
+  { a: 'inflationRate', b: 'incomeGrowthRate', rho: 0.5 },
+  { a: 'inflationRate', b: 'housingGrowthRate', rho: 0.6 },
+  { a: 'inflationRate', b: 'livingCostMonthly', rho: 0.3 },
+  { a: 'inflationRate', b: 'propertyAppreciation', rho: 0.4 },
+  { a: 'housingCostMonthly', b: 'livingCostMonthly', rho: 0.4 },
+  { a: 'grossAnnualIncome', b: 'housingCostMonthly', rho: 0.3 },
+  { a: 'propertyAppreciation', b: 'housingGrowthRate', rho: 0.5 },
+];
+
+const MAX_YEARS = 50;
+const SHOCK_SLOTS = 6;
+
+interface CopulaPlan {
+  /** Positions in VARIABLES of the correlated subset. */
+  indexes: number[];
+  L: number[][] | null;
+}
+
+function copulaPlan(mode: 'default' | 'none'): CopulaPlan {
+  if (mode === 'none') return { indexes: [], L: null };
+  const keys = [...new Set(DEFAULT_CORRELATIONS.flatMap((c) => [c.a, c.b]))];
+  const indexes = keys.map((k) => VARIABLES.findIndex((d) => d.key === k));
+  const m = keys.map((a, i) =>
+    keys.map((b, j) => (i === j ? 1 : (DEFAULT_CORRELATIONS.find((c) => (c.a === a && c.b === b) || (c.a === b && c.b === a))?.rho ?? 0))),
+  );
+  return { indexes, L: cholesky(m) };
+}
+
+/** Inverse CDF of a Poisson distribution for one uniform draw (keeps draw counts fixed). */
+function poissonInv(u: number, lambda: number, cap: number): number {
+  if (lambda <= 0) return 0;
+  let k = 0;
+  let p = Math.exp(-lambda);
+  let cdf = p;
+  while (u > cdf && k < cap) {
+    k++;
+    p *= lambda / k;
+    cdf += p;
+  }
+  return k;
+}
+
+/** Whether anything in the model is uncertain (ranges, employment, job loss, shocks, volatility). */
+export function hasStochasticRisk(nm: NormalizedModel): boolean {
+  const v = nm.variables;
+  const investsAnything = v.startingInvestments.value > 0 || v.monthlyInvestment.value > 0;
+  return (
+    VARIABLES.some((d) => hasRange(nm.variables[d.key])) ||
+    nm.flows.some((f) => hasRange(fr(f))) ||
+    v.employmentProbability.value < 100 ||
+    v.jobLossProbability.value > 0 ||
+    (v.unexpectedExpenseRate.value > 0 && v.unexpectedExpenseSize.value > 0) ||
+    v.inflationVolatility.value > 0 ||
+    (investsAnything && v.investmentVolatility.value > 0)
+  );
+}
+
+function runUncertainty(
+  nm: NormalizedModel,
+  ctx: ProjectionContext,
+  seed: number,
+  runs: number,
+  goals: GoalSpec[],
+  correlations: 'default' | 'none',
+): { result: UncertaintyResult; goalHits: number[] } {
   const base = resolveCase(nm, 'expected');
   const years = nm.horizonYears;
+  const N = nm.horizonMonths;
+  const goalMonths = goals.map((g) => (g.kind === 'net_worth_at' ? Math.min(N - 1, Math.max(0, Math.round(g.month ?? N - 1))) : -1));
+  const runCtx: ProjectionContext = { ...ctx, checkpoints: goalMonths };
+  const plan = copulaPlan(correlations);
+  const v0 = nm.variables;
+  const methodology: UncertaintyResult['methodology'] = {
+    runs,
+    seed,
+    distribution: 'triangular',
+    correlated: plan.L !== null,
+    correlationPairs: plan.L ? DEFAULT_CORRELATIONS : [],
+    investmentVolatility: v0.investmentVolatility.value,
+    inflationVolatility: v0.inflationVolatility.value,
+    jobLossProbability: v0.jobLossProbability.value,
+    unemploymentMonths: v0.unemploymentMonths.value,
+    unexpectedExpenseRate: v0.unexpectedExpenseRate.value,
+    unexpectedExpenseSize: v0.unexpectedExpenseSize.value,
+    employmentProbability: v0.employmentProbability.value,
+    rangedInputs: [
+      ...VARIABLES.filter((d) => hasRange(nm.variables[d.key])).map((d) => d.label),
+      ...nm.flows.filter((f) => hasRange(fr(f))).map((f) => f.label),
+    ],
+  };
 
-  if (!hasUncertainty) {
-    const core = project(base, ctx, false);
-    const bands = core.yearEndNetWorth.map((v) => percentiles([v]));
+  if (!hasStochasticRisk(nm)) {
+    const core = project(base, runCtx, false);
     return {
-      runs: 1,
-      seed,
-      hasUncertainty: false,
-      netWorthBands: bands,
-      finalNetWorth: percentiles([core.finalNetWorth]),
-      shortfallProbability: core.minCash < 0 ? 1 : 0,
-      lossProbability: core.finalNetWorth < core.startingNetWorth ? 1 : 0,
+      result: {
+        runs: 1,
+        seed,
+        hasUncertainty: false,
+        netWorthBands: core.yearEndNetWorth.map((x) => percentiles([x])),
+        finalNetWorth: percentiles([core.finalNetWorth]),
+        shortfallProbability: core.minCash < 0 ? 1 : 0,
+        lossProbability: core.finalNetWorth < core.startingNetWorth ? 1 : 0,
+        samples: [round2(core.finalNetWorth)],
+        methodology: { ...methodology, runs: 1 },
+      },
+      goalHits: goals.map((g, i) => (goalMet(g, core, i) ? 1 : 0)),
     };
   }
 
-  const rand = createRandom(seed);
   const perYear: number[][] = Array.from({ length: years }, () => []);
   const finals: number[] = [];
+  const goalHits = goals.map(() => 0);
   let shortfalls = 0;
   let losses = 0;
+  const zs = new Array<number>(VARIABLES.length);
 
   for (let r = 0; r < runs; r++) {
-    const values = { ...base.values };
-    // Every variable consumes the same number of random draws regardless of
-    // whether it is ranged, so adding a range to one input does not reshuffle
-    // the draws of the others.
-    for (const def of VARIABLES) {
-      const u = rand();
-      const v = nm.variables[def.key];
-      if (hasRange(v)) values[def.key] = sample(u, v);
+    // Parameters: one normal per catalogue variable (fixed count, so draws align across scenarios).
+    const pr = stream(seed, 'params', r);
+    for (let i = 0; i < VARIABLES.length; i++) zs[i] = normal(pr);
+    if (plan.L) {
+      const sub = plan.indexes.map((i) => zs[i]!);
+      plan.indexes.forEach((idx, row) => {
+        let acc = 0;
+        for (let k = 0; k <= row; k++) acc += plan.L![row]![k]! * sub[k]!;
+        zs[idx] = acc;
+      });
     }
+    const values = { ...base.values };
+    VARIABLES.forEach((def, i) => {
+      const v = nm.variables[def.key];
+      if (hasRange(v)) values[def.key] = sample(normalCdf(zs[i]!), v);
+    });
+
+    // Markets: yearly lognormal returns and normally varying inflation around the sampled means.
+    const mk = stream(seed, 'market', r);
+    const returns: number[] = [];
+    const inflation: number[] = [];
+    for (let y = 0; y < MAX_YEARS; y++) {
+      const zr = normal(mk);
+      const zi = normal(mk);
+      if (y < years) {
+        returns.push(lognormalReturn(zr, values.investmentReturn / 100, values.investmentVolatility / 100));
+        inflation.push(Math.max(-0.1, values.inflationRate / 100 + (values.inflationVolatility / 100) * zi));
+      }
+    }
+
+    // Employment: whether the first job materialises, then yearly job-loss draws.
+    const em = stream(seed, 'employment', r);
+    const success = em() < values.employmentProbability / 100;
+    const start = Math.round(values.incomeStartMonth + (success ? 0 : values.extendedSearchMonths));
+    const gaps: [number, number][] = [];
+    for (let y = 0; y < MAX_YEARS; y++) {
+      const uLoss = em();
+      const uMonth = em();
+      if (y >= years) continue;
+      const m = y * 12 + Math.floor(uMonth * 12);
+      if (uLoss < values.jobLossProbability / 100 && m >= start) gaps.push([m, m + Math.round(values.unemploymentMonths)]);
+    }
+
+    // Unexpected expenses: Poisson count per year, exponential sizes, random months.
+    const sh = stream(seed, 'shocks', r);
+    const shocks = new Map<number, number>();
+    for (let y = 0; y < MAX_YEARS; y++) {
+      const n = poissonInv(sh(), values.unexpectedExpenseRate, SHOCK_SLOTS);
+      for (let k = 0; k < SHOCK_SLOTS; k++) {
+        const uM = sh();
+        const uS = sh();
+        if (y >= years || k >= n || values.unexpectedExpenseSize <= 0) continue;
+        const m = y * 12 + Math.floor(uM * 12);
+        const size = Math.min(-values.unexpectedExpenseSize * Math.log(1 - uS * 0.999999), values.unexpectedExpenseSize * 10);
+        shocks.set(m, (shocks.get(m) ?? 0) + size);
+      }
+    }
+
+    const fl = stream(seed, 'flows', r);
     const flows = base.flows.map((f, i) => {
-      const u = rand();
+      const u = fl();
       const nf = nm.flows[i]!;
       return hasRange(fr(nf)) ? { ...f, amount: sample(u, fr(nf)) } : f;
     });
-    const success = rand() < values.employmentProbability / 100;
-    const start = Math.round(values.incomeStartMonth + (success ? 0 : values.extendedSearchMonths));
-    const core = project({ values, flows, effectiveIncomeStart: start }, ctx, false);
+
+    const core = project({ ...base, values, flows, effectiveIncomeStart: start, stochastic: { returns, inflation, gaps, shocks } }, runCtx, false);
     for (let y = 0; y < years; y++) perYear[y]!.push(core.yearEndNetWorth[y] ?? core.finalNetWorth);
-    finals.push(core.finalNetWorth);
+    finals.push(round2(core.finalNetWorth));
     if (core.minCash < 0) shortfalls++;
     if (core.finalNetWorth < core.startingNetWorth) losses++;
+    goals.forEach((g, i) => {
+      if (goalMet(g, core, i)) goalHits[i]!++;
+    });
   }
 
   return {
-    runs,
-    seed,
-    hasUncertainty: true,
-    netWorthBands: perYear.map((vals) => percentiles(vals)),
-    finalNetWorth: percentiles(finals),
-    shortfallProbability: round2(shortfalls / runs),
-    lossProbability: round2(losses / runs),
+    result: {
+      runs,
+      seed,
+      hasUncertainty: true,
+      netWorthBands: perYear.map((vals) => percentiles(vals)),
+      finalNetWorth: percentiles(finals),
+      shortfallProbability: round2(shortfalls / runs),
+      lossProbability: round2(losses / runs),
+      samples: finals,
+      methodology,
+    },
+    goalHits: goalHits.map((h) => h / runs),
   };
+}
+
+function goalMet(g: GoalSpec, core: { checkpointNetWorth: number[]; minCash: number }, i: number): boolean {
+  if (g.kind === 'cash_floor') return core.minCash >= g.target;
+  const nw = core.checkpointNetWorth[i];
+  return nw !== undefined && !Number.isNaN(nw) && nw >= g.target;
 }
 
 // ── Sensitivity (one-at-a-time) ──────────────────────────────────────────────
@@ -339,11 +510,22 @@ function deriveMilestones(nm: NormalizedModel, params: ResolvedParams, p: Projec
     if (free >= 0) push({ id: 'debt_free', kind: 'debt_free', month: free, title: 'Debt cleared', detail: 'Outstanding non-mortgage debt fully repaid.' });
   }
 
-  // Emergency fund: cash covers six months of recurring costs.
-  const already = p.months[0] ? p.months[0].cash >= 6 * recurringCost(p.months[0]) : false;
-  if (!already) {
-    const ef = p.months.findIndex((m) => recurringCost(m) > 0 && m.cash >= 6 * recurringCost(m));
-    if (ef > 0) push({ id: 'emergency_fund', kind: 'emergency_fund', month: ef, title: 'Six-month safety buffer', detail: 'Cash covers six months of recurring costs.' });
+  // Emergency fund: cash covers the target number of months of recurring costs.
+  const efm = params.values.emergencyFundMonths;
+  if (efm > 0) {
+    const already = p.months[0] ? p.months[0].cash >= efm * recurringCost(p.months[0]) : false;
+    if (!already) {
+      const ef = p.months.findIndex((m) => recurringCost(m) > 0 && m.cash >= efm * recurringCost(m));
+      if (ef > 0) push({ id: 'emergency_fund', kind: 'emergency_fund', month: ef, title: `${efm}-month safety buffer`, detail: `Cash covers ${efm} months of recurring costs.` });
+    }
+  }
+
+  // Salary changes and income gaps
+  for (const f of nm.flows) {
+    if (f.startMonth >= N) continue;
+    if (f.kind === 'salary_change') push({ id: `salary:${f.id}`, kind: 'income_start', month: f.startMonth, title: f.label, detail: `New gross salary ${formatMoney(f.amount, cur)} a year.` });
+    if (f.kind === 'income_gap') push({ id: `gap:${f.id}`, kind: 'event', month: f.startMonth, title: f.label, detail: f.endMonth ? `No salary for ${f.endMonth - f.startMonth} months.` : 'No salary from here on.' });
+    if (f.kind === 'loan') push({ id: `loan:${f.id}`, kind: 'event', month: f.startMonth, title: f.label, detail: `Loan of ${formatMoney(f.amount, cur)} at ${f.rate ?? 0} % over ${f.termMonths ?? 60} months.` });
   }
 
   if (p.summary.firstShortfallMonth !== null) {
@@ -467,6 +649,24 @@ function deriveInsights(
     });
   }
 
+  if (v.jobLossProbability.value >= 10) {
+    out.push({
+      id: 'risk:job_loss',
+      kind: 'risk',
+      severity: v.jobLossProbability.value >= 25 ? 'high' : 'medium',
+      title: 'Income could be interrupted',
+      detail: `You estimate a ${v.jobLossProbability.value} % yearly chance of losing the salary, for about ${v.unemploymentMonths.value} months each time.`,
+    });
+  }
+  if (s.emergencyFundMonths > 0 && s.emergencyFundReachedMonth === null && (p.months[0]?.cash ?? 0) < s.emergencyFundMonths * s.avgMonthlyExpensesYear1 && s.avgMonthlyExpensesYear1 > 0) {
+    out.push({
+      id: 'risk:no_emergency_fund',
+      kind: 'risk',
+      severity: 'medium',
+      title: 'Emergency fund never reached',
+      detail: `Cash never covers your ${s.emergencyFundMonths}-month safety target within the horizon.`,
+    });
+  }
   if (v.employmentProbability.value < 75) {
     out.push({
       id: 'risk:employment',
@@ -573,12 +773,24 @@ function explain(nm: NormalizedModel, params: ResolvedParams, p: Projection): Ex
   const lines: ExplanationLine[] = [];
   const monthlyGross = v.grossAnnualIncome / 12;
   if (v.grossAnnualIncome > 0) {
+    const taxPct = p.summary.effectiveTaxRateYear1;
+    const bracketed = Boolean(params.tax && params.tax.brackets.length);
     lines.push({
       label: 'Net monthly salary (year 1)',
-      formula: `${formatMoney(v.grossAnnualIncome, cur)} ÷ 12 × (1 − ${v.effectiveTaxRate} %)`,
-      value: round2(monthlyGross * (1 - v.effectiveTaxRate / 100)),
+      formula: bracketed
+        ? `${formatMoney(v.grossAnnualIncome, cur)} ÷ 12 × (1 − ${taxPct.toFixed(1)} % effective, from your tax schedule)`
+        : `${formatMoney(v.grossAnnualIncome, cur)} ÷ 12 × (1 − ${v.effectiveTaxRate} %)`,
+      value: round2(monthlyGross * (1 - (bracketed ? taxPct : v.effectiveTaxRate) / 100)),
       unit: 'currency_month',
     });
+    if (v.jobLossProbability > 0) {
+      lines.push({
+        label: 'Expected salary after job-loss risk',
+        formula: `Salary × (1 − ${v.jobLossProbability} % × ${Math.min(v.unemploymentMonths, 12)} ÷ 12 months)`,
+        value: round2(Math.max(0, 1 - (v.jobLossProbability / 100) * (Math.min(v.unemploymentMonths, 12) / 12)) * 100),
+        unit: 'percent',
+      });
+    }
     const p100 = v.employmentProbability;
     lines.push({
       label: 'Expected salary start',
@@ -588,6 +800,14 @@ function explain(nm: NormalizedModel, params: ResolvedParams, p: Projection): Ex
           : `${v.incomeStartMonth} months`,
       value: params.effectiveIncomeStart,
       unit: 'months',
+    });
+  }
+  if (v.unexpectedExpenseRate > 0 && v.unexpectedExpenseSize > 0) {
+    lines.push({
+      label: 'Expected unexpected costs',
+      formula: `${v.unexpectedExpenseRate} a year × ${formatMoney(v.unexpectedExpenseSize, cur)} ÷ 12, inflated`,
+      value: round2((v.unexpectedExpenseRate * v.unexpectedExpenseSize) / 12),
+      unit: 'currency_month',
     });
   }
   lines.push({
@@ -667,5 +887,7 @@ function formatInput(key: string, value: number, currency: string): string {
       return `${Math.round(value)} years`;
     case 'hours_week':
       return `${Math.round(value)} h/week`;
+    case 'per_year':
+      return `${Math.round(value * 10) / 10} a year`;
   }
 }

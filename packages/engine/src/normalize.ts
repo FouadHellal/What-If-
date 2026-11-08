@@ -5,6 +5,7 @@ import {
   VARIABLES,
   getVariableDefinition,
 } from './catalog';
+import { normalizeSchedule } from './tax';
 import type {
   CaseName,
   FlowInput,
@@ -12,6 +13,7 @@ import type {
   ResolvedParams,
   ScenarioModel,
   SimulationWarning,
+  TaxSchedule,
   VariableInput,
   VariableKey,
 } from './types';
@@ -49,6 +51,7 @@ export interface NormalizedModel {
   exchangeRateToBase: number;
   variables: Record<VariableKey, NormalizedVariable>;
   flows: NormalizedFlow[];
+  tax: TaxSchedule | null;
   warnings: SimulationWarning[];
 }
 
@@ -132,7 +135,8 @@ function normalizeFlow(
   warnings: SimulationWarning[],
 ): NormalizedFlow | null {
   const label = (flow.label || 'Untitled item').slice(0, 120);
-  const amount = finiteOrNull(flow.amount);
+  // An income gap has no amount: it only marks months without salary.
+  const amount = flow.kind === 'income_gap' ? 0 : finiteOrNull(flow.amount);
   if (amount === null) {
     warnings.push({ code: 'missing_flow_amount', key: `flow:${flow.id}`, message: `“${label}” has no amount and was skipped.` });
     return null;
@@ -152,9 +156,9 @@ function normalizeFlow(
     warnings.push({ code: 'clamped', key: `flow:${flow.id}`, message: `“${label}” exceeds the supported maximum and was limited.` });
     value = max;
   }
-  const isOneTime = flow.kind === 'one_time_income' || flow.kind === 'one_time_expense';
+  const isOneTime = flow.kind === 'one_time_income' || flow.kind === 'one_time_expense' || flow.kind === 'loan';
   let amountMode = flow.amountMode ?? 'fixed';
-  if (amountMode === 'percent_of_income' && (isOneTime || isTime)) amountMode = 'fixed';
+  if (amountMode === 'percent_of_income' && (isOneTime || isTime || flow.kind === 'salary_change' || flow.kind === 'income_gap')) amountMode = 'fixed';
   if (amountMode === 'percent_of_income') value = Math.min(value, 100);
 
   let startMonth = Math.round(finiteOrNull(flow.startMonth) ?? 0);
@@ -178,6 +182,16 @@ function normalizeFlow(
   if (low !== null) low = clamp(Math.min(low, value), 0, max);
   if (high !== null) high = clamp(Math.max(high, value), 0, max);
 
+  let rate: number | null = null;
+  let termMonths: number | null = null;
+  if (flow.kind === 'loan') {
+    rate = clamp(finiteOrNull(flow.rate ?? null) ?? 0, 0, 100);
+    termMonths = Math.round(clamp(finiteOrNull(flow.termMonths ?? null) ?? 60, 1, 600));
+    if (flow.termMonths === null || flow.termMonths === undefined) {
+      warnings.push({ code: 'loan_term_default', key: `flow:${flow.id}`, message: `“${label}” has no repayment term — assuming 60 months.` });
+    }
+  }
+
   return {
     id: flow.id,
     kind: flow.kind,
@@ -189,6 +203,8 @@ function normalizeFlow(
     startMonth,
     endMonth: isOneTime ? null : endMonth,
     annualGrowth,
+    rate,
+    termMonths,
   };
 }
 
@@ -231,6 +247,9 @@ export function normalizeModel(model: ScenarioModel): NormalizedModel {
     if (n) flows.push(n);
   }
 
+  const taxNorm = normalizeSchedule(model.tax);
+  for (const msg of taxNorm.issues) warnings.push({ code: 'tax_schedule', message: msg });
+
   const fx = finiteOrNull(model.exchangeRateToBase ?? 1);
   const exchangeRateToBase = fx !== null && fx > 0 ? fx : 1;
 
@@ -242,6 +261,7 @@ export function normalizeModel(model: ScenarioModel): NormalizedModel {
     exchangeRateToBase,
     variables,
     flows,
+    tax: taxNorm.schedule,
     warnings,
   };
 }
@@ -255,7 +275,7 @@ function bound(v: { value: number; low: number | null; high: number | null }, po
 }
 
 export function flowPolarity(kind: NormalizedFlow['kind']): Direction {
-  if (kind === 'income' || kind === 'one_time_income') return 'higher';
+  if (kind === 'income' || kind === 'one_time_income' || kind === 'salary_change') return 'higher';
   if (kind === 'expense' || kind === 'one_time_expense') return 'lower';
   return 'none';
 }
@@ -278,6 +298,8 @@ export function resolveCase(model: NormalizedModel, which: CaseName): ResolvedPa
   return {
     values,
     effectiveIncomeStart: Math.round(effectiveIncomeStart),
+    housingGrowthSet: model.variables.housingGrowthRate.provided,
+    tax: model.tax,
     flows: model.flows.map((f) => ({
       id: f.id,
       kind: f.kind,
@@ -287,6 +309,8 @@ export function resolveCase(model: NormalizedModel, which: CaseName): ResolvedPa
       startMonth: f.startMonth,
       endMonth: f.endMonth,
       annualGrowth: f.annualGrowth,
+      rate: f.rate,
+      termMonths: f.termMonths,
     })),
   };
 }
