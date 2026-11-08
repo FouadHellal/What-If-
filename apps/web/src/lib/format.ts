@@ -141,12 +141,30 @@ export function todayISO(): string {
 }
 
 /** Parses user-typed numbers, accepting thousands separators, spaces and k/m suffixes. */
-export function parseNumberInput(raw: string): number | null {
+function separators(loc: string): { group: string; decimal: string } {
+  try {
+    const parts = new Intl.NumberFormat(loc).formatToParts(12345.6);
+    return { group: parts.find((p) => p.type === 'group')?.value ?? ',', decimal: parts.find((p) => p.type === 'decimal')?.value ?? '.' };
+  } catch {
+    return { group: ',', decimal: '.' };
+  }
+}
+
+export function parseNumberInput(raw: string, loc: string = locale): number | null {
   const s = raw.trim().toLowerCase().replace(/[\s  ']/g, '');
   if (s === '' || s === '-') return null;
   const m = /^(-?)([\d.,]+)(k|m)?$/.exec(s);
   if (!m) return Number.NaN;
   let body = m[2]!;
+  // Text formatted in the active locale (e.g. "62.000" or "1.234,5" in German) parses exactly.
+  const { group, decimal } = separators(loc);
+  if ((group === '.' || group === ',') && new RegExp(`^\\d{1,3}(\\${group}\\d{3})+(\\${decimal}\\d+)?$`).test(body)) {
+    body = body.split(group).join('').replace(decimal, '.');
+    let n = Number(body);
+    if (m[3] === 'k') n *= 1_000;
+    if (m[3] === 'm') n *= 1_000_000;
+    return m[1] ? -n : n;
+  }
   const lastComma = body.lastIndexOf(',');
   const lastDot = body.lastIndexOf('.');
   if (lastComma > -1 && lastDot > -1) {

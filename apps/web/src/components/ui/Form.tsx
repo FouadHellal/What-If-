@@ -155,9 +155,13 @@ export function NumberInput({
         disabled={disabled}
         style={{ paddingRight: suffix ? 22 + suffix.length * 6.6 : 10 }}
         onFocus={(e) => {
+          // Keep the visible text as-is (the parser understands grouped digits);
+          // replacing it here would race with select-all and append typed digits.
           setFocused(true);
-          setText(value === null || value === undefined ? '' : String(value));
-          requestAnimationFrame(() => e.target.select());
+          const el = e.target;
+          requestAnimationFrame(() => {
+            if (document.activeElement === el) el.select();
+          });
         }}
         onChange={(e) => {
           setText(e.target.value);

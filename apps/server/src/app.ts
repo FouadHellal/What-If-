@@ -90,7 +90,7 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
     return payload;
   });
 
-  app.get('/api/health', async (_req, reply) => {
+  app.get('/api/health', { logLevel: 'warn' }, async (_req, reply) => {
     const dbOk = await database.ping();
     if (!dbOk) reply.status(503);
     return { status: dbOk ? 'ok' : 'degraded', database: dbOk ? 'ok' : 'unreachable', version: config.version };
