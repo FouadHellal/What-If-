@@ -74,6 +74,7 @@ describe('core cash-flow arithmetic', () => {
     expect(r.expected.months[1]!.investmentContribution).toBe(0);
     expect(r.expected.summary.lowestCash).toBeGreaterThanOrEqual(0);
   });
+it('does not invest during loss-making months unless cash covers six months of costs', () => {    const thin = simulate(model({ startingCash: u(5_000), livingCostMonthly: u(1_000), monthlyInvestment: u(500) }));    expect(thin.expected.months[0]!.investmentContribution).toBe(0);    const rich = simulate(model({ startingCash: u(20_000), livingCostMonthly: u(1_000), monthlyInvestment: u(500) }));    expect(rich.expected.months[0]!.investmentContribution).toBe(500);    const earning = simulate(model({ startingCash: u(0), grossAnnualIncome: u(36_000), livingCostMonthly: u(1_000), monthlyInvestment: u(500) }));    expect(earning.expected.months[0]!.investmentContribution).toBe(500);  });
 
   it('computes free time from working, commuting and time commitments', () => {
     const r = simulate(

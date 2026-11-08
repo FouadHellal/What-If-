@@ -171,7 +171,11 @@ export function project(
     // 6. Cash interest, cash flow, investment contribution
     if (s.cash > 0) s.cash += s.cash * rCash;
     s.cash += netCashFlow;
-    const contribution = Math.max(0, Math.min(v.monthlyInvestment, s.cash));
+    // Invest from surplus: skip months that run at a loss unless cash already covers
+    // six months of recurring costs, and never invest money that is not there.
+    const recurring = housing + living + otherExpenses + propertyCosts + debtPayments;
+    const canInvest = netCashFlow > 0 || s.cash > recurring * 6;
+    const contribution = canInvest ? Math.max(0, Math.min(v.monthlyInvestment, s.cash)) : 0;
     s.cash -= contribution;
 
     // 7. Investment growth (on the balance before this month's contribution)
