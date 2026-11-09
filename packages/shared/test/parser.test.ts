@@ -42,6 +42,12 @@ describe('question parsing', () => {
       ['What if I take a year off?', 'sabbatical'],
       ['What if I change my career?', 'career_change'],
       ['What if we start a family?', 'family'],
+      ['What if I accept the job offer at 65k?', 'job_offer'],
+      ['What if I pay off my student loan faster?', 'debt_payoff'],
+      ['What if I buy a new car?', 'major_purchase'],
+      ['What if I work a four-day week?', 'working_hours'],
+      ['What if I get my CCNP certification?', 'certification'],
+      ['What if I do a degree or self-study?', 'study_path'],
       ['What if I paint the fence?', 'other'],
     ];
     for (const [q, cat] of cases) expect(classify(q).category, q).toBe(cat);

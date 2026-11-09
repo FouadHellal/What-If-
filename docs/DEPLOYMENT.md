@@ -156,3 +156,26 @@ NODE_ENV=production APP_SECRET=… DATABASE_URL=postgres://… WEB_DIST=apps/web
 ```
 
 Use a process manager (systemd) and a reverse proxy as above.
+
+## Optional external data (v2)
+
+The Analyst tab can look up cited public figures on request:
+
+| Lookup | Host contacted | What is sent |
+|---|---|---|
+| ECB reference exchange rates | `api.frankfurter.app` | A currency pair, e.g. `CAD`/`EUR` |
+| World Bank inflation | `api.worldbank.org` | A country code, e.g. `DEU` |
+
+Nothing is fetched in the background. Set `EXTERNAL_DATA=off` in `.env` on servers without internet access or where outbound calls are not allowed. Manual evidence still works.
+
+## Upgrading from 1.x to 2.0
+
+```bash
+cd /opt/what-if && ./deploy/backup.sh
+```
+
+```bash
+git pull && docker compose up -d --build
+```
+
+Migration `0001` only adds columns and tables. Existing decisions, scenarios and runs are kept; new runs use engine 2.0.

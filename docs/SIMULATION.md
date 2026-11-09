@@ -110,3 +110,57 @@ Rule-based and fully deterministic (`deriveInsights`):
 ## Reproducibility
 
 `hashInputs` produces a stable hash (sorted-key serialisation) of the engine version, model, seed and run count. The server stores every run with its full input snapshot, and runs are immutable. `POST /api/runs/:id/verify` re-executes the stored inputs and confirms that the result is identical.
+
+---
+
+## Engine 2.0 additions
+
+### More events in the projection
+- **Salary change** (flow kind `salary_change`): from its start month (until its end month, if set) the gross salary becomes the given annual amount, growing by the flow's own rate or the general salary growth. It is taxed like the base salary.
+- **Income gap** (`income_gap`): no salary between its start and end month, for example for a career break, full-time study or retraining.
+- **Loan** (`loan`): the principal arrives as cash in its start month and is repaid from the next month as an annuity at `rate` over `termMonths` (60 if not set). The outstanding balance counts as debt.
+- **Progressive tax**: when the scenario has a schedule, monthly tax = bracket tax on (monthly gross × 12) ÷ 12, applied bracket by bracket after the allowance, plus flat social contributions. Without a schedule, the effective rate applies as before.
+- **Rent increases** (`housingGrowthRate`): rent grows at this rate when it is set. Otherwise it follows the inflation path.
+- **Unexpected expenses**: the deterministic cases add the expected cost (events per year × average size ÷ 12, inflated). The simulations draw actual events.
+- **Job-loss risk**: the deterministic cases scale salary by 1 − p × min(months, 12) ÷ 12. The simulations draw actual interruptions.
+- **Emergency fund target**: replaces the fixed six months, both for the milestone and for the rule that pauses investing in loss-making months.
+
+### Uncertainty model 2.0
+Each run draws from five independent, seeded streams: parameters, markets, employment, shocks and flows. Each stream is derived from (seed, stream, run). Every scenario of a decision uses the same seed, so run *k* of every scenario sees the same market path and the same parameter quantiles. These are **common random numbers**, and they make it valid to compare scenarios future by future.
+
+- **Parameters**: one standard normal per catalogue variable (a fixed count). The documented correlations are applied with a Cholesky factor (a Gaussian copula). Each value is then mapped to its triangular distribution (low, expected, high):
+
+  | Pair | ρ |
+  |---|---|
+  | inflation · salary growth | 0.5 |
+  | inflation · rent increases | 0.6 |
+  | inflation · living costs | 0.3 |
+  | inflation · property growth | 0.4 |
+  | housing cost · living costs | 0.4 |
+  | salary · housing cost | 0.3 |
+  | property growth · rent increases | 0.5 |
+
+  Choosing *Treat inputs as independent* turns the correlations off.
+- **Markets**: yearly investment returns are lognormal with the chosen mean and volatility, so E[1+R] matches the mean. Yearly inflation is normal around the sampled mean, with the chosen variability.
+- **Employment**: first, whether the expected job materialises (otherwise the extra search months apply). Then, each year, a job loss with the chosen probability, starting in a random month and lasting the chosen number of months.
+- **Shocks**: a Poisson number of events per year (capped at 6), each with an exponentially distributed size (capped at 10 × the average) in a random month.
+- **Goals**: the share of runs meeting each goal (net worth ≥ target at a month, or cash never below a floor).
+
+Reported: per-year P5–P95, final P5–P95, shortfall and loss probabilities, per-run final net worth (`samples`), and the methodology used.
+
+### Analysis (`analysis.ts`)
+- **Break-even**: compares net worth month by month on the shared calendar. It reports the first month from which the alternative stays ahead, the deepest deficit and when it occurs, the advantage at the common end, and the average monthly gain over the last year.
+- **Parity solver**: bisection on the deterministic model finds the value of one input (a variable or a flow amount) at which two scenarios end level at their last common month, in the base currency. It returns null when no crossing exists in a sensible range.
+- **What would change my mind**: runs the solver for the top sensitivity inputs of the expected leader (inputs that could make it lose) and of each rival (inputs that could make it win), sorted by distance from the current value. Exchange-rate parity is solved in closed form.
+- **Robustness**: needs equal seeds and run counts. For each scenario it computes:
+  - win probability (share of futures in which it ends highest);
+  - expected regret and P90 regret (how far behind the best scenario it ends in each future);
+  - P10 to P90.
+
+  It then assigns these labels:
+  - *Consistent*: wins in at least 60 % of futures.
+  - *Needs favourable assumptions*: it is the expected leader but wins in under 50 %, or its median is more than 15 % below its expected case.
+  - *Vulnerable*: shortfall or loss probability of 25 % or more.
+  - *Highest upside*: the highest P90.
+  - *Lowest downside*: the highest P10.
+- **Life quality**: score = Σ weight·(rating − 1) ÷ Σ weight·4 × 100, over rated dimensions only (10 dimensions; v1 factors are mapped). Priority sensitivity searches each dimension's weight outward from its current value for the smallest change that alters the leader.

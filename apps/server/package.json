@@ -1,6 +1,6 @@
 {
   "name": "@whatif/server",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -17,8 +17,8 @@
     "@fastify/helmet": "^13.0.0",
     "@fastify/rate-limit": "^11.0.0",
     "@fastify/static": "^10.1.10",
-    "@whatif/engine": "1.0.0",
-    "@whatif/shared": "1.0.0",
+    "@whatif/engine": "*",
+    "@whatif/shared": "*",
     "drizzle-orm": "^0.45.0",
     "fastify": "^5.6.0",
     "pdfkit": "^0.17.0",

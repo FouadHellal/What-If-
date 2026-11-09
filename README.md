@@ -24,7 +24,13 @@ It is not a chatbot. Every number comes from a reproducible calculation that you
 | **Risks & notes** | Rule-based risk and opportunity flags, plus your own notes on risks, opportunities, assumptions and open questions. |
 | **Decision journal** | Records your reasoning, expectations, the decision itself and later reflections. Check-ins compare your actual numbers with the projection pinned when you decided. |
 | **Reports** | Frozen report snapshots with 12 sections: a printable web view and a server-generated PDF. |
-| **AI analyst (optional)** | Reviews assumptions (with suggestions you can apply), explains results, identifies risks, proposes alternatives and writes an executive summary. Works with OpenAI-compatible APIs, Anthropic, or a local Ollama model. Analyses are grounded in stored simulation runs, and any figure that does not appear in those results is flagged. |
+| **Decision intelligence** | A Summary that separates highest expected outcome, most robust path and best fit with your priorities. It shows break-even dates, the exact thresholds that would change the outcome (salary, rent, tax, exchange rate), failure modes, irreversible commitments, overlooked costs and what to research next. |
+| **Robustness** | All scenarios face the same simulated futures (common random numbers). This gives win probability, regret and downside for each path, with year-by-year market and inflation swings, correlated inputs, job-loss risk and surprise expenses. |
+| **Decision Lab** | Vary key assumptions with sliders and compare instantly against the original. Saved experiments can be applied in place or saved as new scenarios. |
+| **Goals** | The probability of reaching a net-worth target by a date, or of never running out of cash, for each scenario. |
+| **Life quality** | 10 subjective dimensions weighted by importance, with the smallest priority change that would alter the best fit. |
+| **Evidence** | Cited figures with source, date and coverage. Optional ECB exchange-rate and World Bank inflation lookups. Evidence is never applied silently. |
+| **AI analyst (optional)** | Reviews assumptions (with suggestions you can apply), explains results, identifies risks, proposes alternatives and writes an executive summary. Ask questions in plain language and get answers labelled by evidence type, using a decision memory you control. Works with OpenAI-compatible APIs, Anthropic, or a local Ollama model. Analyses are grounded in stored simulation runs, and any figure that does not appear in those results is flagged. |
 | **Privacy & security** | Hashed passwords (scrypt), server-side sessions, CSRF protection, rate limiting, account lockout, encrypted API keys, an audit log, full data export and account deletion. |
 | **Self-hosting** | One Docker Compose file (app + PostgreSQL), sized for a small VM, with no external services required. |
 
@@ -32,7 +38,7 @@ It is not a chatbot. Every number comes from a reproducible calculation that you
 
 - **Overview**: active decisions, upcoming milestones, recent activity.
 - **Decisions**: search, filter by status and type, sort, paginate.
-- **Workspace**: Compare · Scenarios · Timeline · Risks & sensitivity · AI analyst · Decide.
+- **Workspace**: Summary · Scenarios · Compare · Lab · Risks & sensitivity · Timeline · Analyst · Decide, with an at-a-glance strip above every tab.
 - **Journal**: chronological entries and plan-versus-reality check-ins.
 - **Settings**: baseline, preferences (theme, number format), AI analyst, your data, security, instance administration.
 
@@ -131,6 +137,7 @@ All configuration is through environment variables (see [`.env.example`](.env.ex
 | `AI_BASE_URL` / `AI_MODEL` / `AI_API_KEY` | — | Instance provider settings. |
 | `AI_DAILY_LIMIT` | `50` | Maximum AI requests per user per day. |
 | `AI_ALLOW_USER_CONFIG` | `true` | Let users bring their own provider and key. |
+| `EXTERNAL_DATA` | `on` | User-triggered public data lookups (ECB, World Bank). Set to `off` on air-gapped servers. |
 | `LOG_LEVEL` | `info` | Structured JSON logs (pino). |
 | `MIGRATE_ON_START` | `true` | Apply database migrations at start-up. |
 
@@ -141,6 +148,7 @@ All configuration is through environment variables (see [`.env.example`](.env.ex
 - [Simulation engine: every formula and assumption](docs/SIMULATION.md)
 - [Security and privacy](docs/SECURITY.md)
 - [Design system](docs/DESIGN.md)
+- [Changelog](CHANGELOG.md) · [v2 audit and roadmap](docs/AUDIT-V2.md)
 
 ## Important limitations
 

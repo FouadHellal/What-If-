@@ -40,8 +40,8 @@ services:
     build:
       context: .
       args:
-        APP_VERSION: ${APP_VERSION:-1.0.0}
-    image: what-if:${APP_VERSION:-1.0.0}
+        APP_VERSION: ${APP_VERSION:-2.0.0}
+    image: what-if:${APP_VERSION:-2.0.0}
     restart: unless-stopped
     depends_on:
       db:
@@ -49,6 +49,7 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-whatif}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-whatif}
       APP_SECRET: ${APP_SECRET:?Set APP_SECRET in .env (openssl rand -base64 48)}
+      APP_VERSION: ${APP_VERSION:-2.0.0}
       PUBLIC_URL: ${PUBLIC_URL:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-auto}
       TRUST_PROXY: ${TRUST_PROXY:-false}
@@ -61,6 +62,7 @@ services:
       AI_API_KEY: ${AI_API_KEY:-}
       AI_DAILY_LIMIT: ${AI_DAILY_LIMIT:-50}
       AI_ALLOW_USER_CONFIG: ${AI_ALLOW_USER_CONFIG:-true}
+      EXTERNAL_DATA: ${EXTERNAL_DATA:-on}
     ports:
       - '${WHATIF_BIND:-127.0.0.1}:${WHATIF_PORT:-3000}:3000'
     # Lets a local Ollama on the host be reached at http://host.docker.internal:11434

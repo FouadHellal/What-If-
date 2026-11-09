@@ -1,6 +1,6 @@
 {
   "name": "@whatif/shared",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "description": "API contracts, validation schemas and decision templates shared by server and web.",
@@ -14,7 +14,7 @@
     "typecheck": "tsc -p ."
   },
   "dependencies": {
-    "@whatif/engine": "1.0.0",
+    "@whatif/engine": "*",
     "zod": "^4.1.0"
   }
 }

@@ -135,7 +135,7 @@ export function loadConfig(source: Record<string, string | undefined> = process.
       timeoutMs: env.AI_TIMEOUT_MS,
       allowUserConfig: env.AI_ALLOW_USER_CONFIG,
     },
-    version: process.env.APP_VERSION ?? '1.0.0',
+    version: process.env.APP_VERSION ?? '2.0.0',
     ...overrides,
   };
   return cfg;

@@ -96,3 +96,31 @@ src/styles      tokens.css, base.css, components.css, layout.css, workspace.css
 ```
 
 Routes are code-split. The largest view, the workspace, is about 32 kB gzipped.
+
+---
+
+## Version 2
+
+### New data
+- `decisions.settings` (JSONB, validated by `decisionSettingsSchema`): run count, correlation mode, goals and the analyst memory.
+- `scenarios.tax`: an optional tax schedule. `scenario_flows.rate` and `scenario_flows.term_months` hold loan terms.
+- `experiments`: Decision Lab runs, storing the changes, the base version, base and variant inputs, options and summary metrics.
+- `evidence`: cited figures (source, URL, retrieval date, coverage, reliability, origin).
+- `ai_messages`: the analyst conversation, with structured answers, unverified numbers and the run ids used.
+
+### Simulation options are part of the input
+`simulationOptions(settings, scenario, baseCurrency)` in `@whatif/shared` derives the seed, runs, correlations and goals. Goals are converted into the scenario's currency and months. The server (stored runs) and the browser (worker preview) both call it, so their input hashes are identical. All scenarios share one seed.
+
+### New endpoints
+| Area | Endpoints |
+|---|---|
+| Lab | `GET/POST /decisions/:id/experiments`, `GET/DELETE /experiments/:id`, `POST /experiments/:id/apply` (`update` is refused with 409 if the scenario changed since; `new` creates a scenario) |
+| Evidence | `GET/POST /decisions/:id/evidence`, `DELETE /evidence/:id`, `POST /decisions/:id/research` (`exchange_rate` or `inflation`) |
+| Analyst | `GET/POST/DELETE /decisions/:id/ai/chat` |
+| Settings | `PATCH /decisions/:id` with `settings` (merged, including memory) |
+
+### Decision Intelligence
+`buildIntelligence()` (in `@whatif/shared`) combines the engine's analysis functions with decision context: category checklists, user notes and value sources. It runs in the browser worker for the Summary tab, and on the server to ground the analyst.
+
+### Frontend
+`src/lib/sim.worker.ts` runs `simulate` and `buildIntelligence`. `useSimulations` keeps the last result for each scenario while new inputs compute, so the UI never flickers. Vendor code is split into cacheable chunks (react, query, zod, icons, vendor).

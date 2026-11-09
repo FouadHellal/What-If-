@@ -34,7 +34,7 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
   && npm cache clean --force
 
 FROM node:${NODE_VERSION} AS runtime
-ARG APP_VERSION=1.0.0
+ARG APP_VERSION=2.0.0
 LABEL org.opencontainers.image.title="What-If" \
       org.opencontainers.image.description="Self-hosted decision planning and future simulation" \
       org.opencontainers.image.version="${APP_VERSION}" \

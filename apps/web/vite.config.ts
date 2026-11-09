@@ -14,7 +14,15 @@ export default defineConfig({
     chunkSizeWarningLimit: 700,
     rollupOptions: {
       output: {
-        manualChunks: { react: ['react', 'react-dom', 'react-router'], query: ['@tanstack/react-query'] },
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (/[\/](react|react-dom|scheduler|react-router)[\/]/.test(id)) return 'react';
+          if (id.includes('@tanstack')) return 'query';
+          if (id.includes('zod')) return 'zod';
+          if (id.includes('lucide-react')) return 'icons';
+          if (id.includes('@fontsource')) return 'fonts';
+          return 'vendor';
+        },
       },
     },
   },
