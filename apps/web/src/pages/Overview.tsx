@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useState } from 'react';
-import { ArrowRight, BookOpen, FileText, Flag, FlaskConical, Plus, Sparkles, Split, UserRound } from 'lucide-react';
+import { ArrowRight, BookOpen, FileText, Flag, FlaskConical, Plus, Sparkles, Split, UserRound, Users } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { JOURNAL_TYPE_LABELS, STATUS_LABELS, categoryInfo, type DecisionSummaryDTO, type OverviewDTO } from '@whatif/shared';
 import { keys, useOverview } from '../api/queries';
@@ -30,6 +30,8 @@ export function DecisionRow({ d }: { d: DecisionSummaryDTO }) {
             {d.title}
           </span>
           {d.isExample && <Badge outline>Example</Badge>}
+          {d.sharedBy && <Badge tone="accent" icon={<Users aria-hidden />}>Shared by {d.sharedBy}{d.access === 'viewer' ? ' · view only' : ''}</Badge>}
+          {!d.sharedBy && d.memberCount > 0 && <Badge outline icon={<Users aria-hidden />}>Shared with {d.memberCount}</Badge>}
         </div>
         <div className="sub row" style={{ gap: 12 }}>
           <span>{categoryInfo(d.category).label}</span>

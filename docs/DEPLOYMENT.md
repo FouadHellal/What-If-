@@ -179,3 +179,17 @@ git pull && docker compose up -d --build
 ```
 
 Migration `0001` only adds columns and tables. Existing decisions, scenarios and runs are kept; new runs use engine 2.0.
+
+## Upgrading from 2.0 to 2.1
+
+2.1 adds accounts created by the administrator and shared decisions. One additive migration creates the `decision_members` table; nothing existing changes.
+
+```bash
+cd /opt/what-if && ./deploy/backup.sh
+git fetch --tags && git checkout v2.1.0
+sed -i 's/^APP_VERSION=.*/APP_VERSION=2.1.0/' .env
+docker compose up -d --build
+curl -s http://127.0.0.1:3000/api/health
+```
+
+Then add people in **Settings → People** (you can keep public registration closed) and share decisions from the **Share** button in a decision.

@@ -26,6 +26,9 @@ export const keys = {
   sessions: ['sessions'] as const,
   audit: (page: number) => ['audit', page] as const,
   admin: ['admin'] as const,
+  adminUsers: ['admin-users'] as const,
+  people: ['people'] as const,
+  decisionPeople: (id: string) => ['decision-people', id] as const,
   runs: (scenarioId: string) => ['runs', scenarioId] as const,
 };
 
@@ -33,7 +36,7 @@ export function useOverview() {
   return useQuery({ queryKey: keys.overview, queryFn: ({ signal }) => get<OverviewDTO>('/overview', signal) });
 }
 
-export function useDecisions(params: { q?: string; status?: string; category?: string; sort?: string; page?: number }) {
+export function useDecisions(params: { q?: string; status?: string; category?: string; sort?: string; page?: number; shared?: string }) {
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') qs.set(k, String(v));
   return useQuery({

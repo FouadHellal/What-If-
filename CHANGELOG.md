@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.1.0 — Plan together
+
+### People and sharing
+- **Accounts created by the administrator**: Settings → People adds a person with a temporary password, even when registration is closed. Administrators can also change roles, set a new password (unlocks the account and signs the person out), and delete accounts. The last administrator is protected.
+- **Shared decisions**: the owner shares a decision with other people as **editor** (changes scenarios, numbers, milestones, experiments and evidence) or **viewer** (read only). Shared decisions appear in everyone's lists with a "Shared by" badge, and the Decisions list can filter "Only mine" / "Shared with me".
+- Only the owner can share or delete a decision. Members can leave a decision shared with them.
+- Journals, reports, analyst chats and profiles stay private to each person. Experiments and evidence show who added them.
+- Scenarios and simulation runs belong to the decision's owner, whoever created them, so they stay when a collaborator leaves.
+
+### More decision types (23 templates, in sections)
+- **Military service**: wait for an exemption, serve now, or defer while studying and serve after — with the effect of an unsettled status on jobs, travel and visas.
+- **Study abroad**, **Work remotely for foreign clients**, **Public or private sector**, **Move in together or marry**, **Start a side project**.
+- The template library is grouped (Work & career, Money, Life & home, Studies & skills, Papers & obligations) and searchable. Questions such as "What if I do my service national after my degree?" are recognised.
+- Checklists of commonly overlooked costs for every new type.
+
+### Easier to understand
+- A new **How it works** page: six steps and a searchable glossary of every term (P10–P90, regret, break-even, robustness…).
+- Each workspace tab says in one line what it is for.
+- "Highest upside" and "Lowest downside" are only shown when one scenario clearly leads (not while inputs are still empty).
+
+### Upgrading from 2.0
+- One additive migration (`0002`) creates the `decision_members` table; it runs automatically on start. Existing data is unchanged.
+- If your `.env` pins `APP_VERSION=2.0.0`, change it to `2.1.0` so the image and health check report the new version.
+
+
 ## 2.0.0 — Decision intelligence
 
 A substantial upgrade of the simulation engine, plus a new analysis layer and a refined workspace. See `docs/AUDIT-V2.md` for the review behind it.

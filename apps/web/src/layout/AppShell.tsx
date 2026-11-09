@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
-import { BookOpen, Compass, LogOut, Menu as MenuIcon, Moon, Plus, Settings, Split, Sun, SunMoon, X } from 'lucide-react';
+import { BookOpen, CircleHelp, Compass, LogOut, Menu as MenuIcon, Moon, Plus, Settings, Split, Sun, SunMoon, X } from 'lucide-react';
 import { useSession } from '../lib/session';
 import { Button, Spinner, useToast } from '../components/ui';
 import { put } from '../api/client';
@@ -20,6 +20,7 @@ const NAV = [
   { to: '/', label: 'Overview', icon: Compass, end: true },
   { to: '/decisions', label: 'Decisions', icon: Split, end: false },
   { to: '/journal', label: 'Journal', icon: BookOpen, end: false },
+  { to: '/help', label: 'How it works', icon: CircleHelp, end: false },
   { to: '/settings/profile', label: 'Settings', icon: Settings, end: false, match: '/settings' },
 ];
 

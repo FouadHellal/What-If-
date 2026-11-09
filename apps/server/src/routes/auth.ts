@@ -48,7 +48,7 @@ export async function authRoutes(app: FastifyInstance) {
     const user = await app.ctx.db.transaction(async (tx) => {
       const [u] = await tx
         .insert(users)
-        .values({ email: input.email, name: input.name, passwordHash, role: reg.hasUsers ? 'member' : 'admin' })
+        .values({ email: input.email, name: input.name, passwordHash, role: reg.hasUsers ? 'member' : 'admin', lastLoginAt: new Date() })
         .returning();
       await tx.insert(profiles).values({ userId: u!.id, displayName: input.name });
       await tx.insert(userSettings).values({ userId: u!.id });

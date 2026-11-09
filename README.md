@@ -13,7 +13,10 @@ It is not a chatbot. Every number comes from a reproducible calculation that you
 | Area | What you get |
 |---|---|
 | **Baseline profile** | Optional onboarding: location, work, income and costs, savings, priorities, risk tolerance and planning horizon. It pre-fills the “stay as I am” scenario of every decision. |
-| **Decisions from natural language** | A built-in, offline parser recognises 10 decision types (relocation, job change, business, buy vs rent, investing, learning, city move, sabbatical, career change, family). It also extracts places, roles, amounts and durations. It never invents salaries or prices: unknown values are flagged as *Needs input*. |
+| **Decisions from natural language** | A built-in, offline parser recognises 23 decision types — including moving abroad, job offers, military service, studying abroad, remote work for foreign clients, public vs private sector, moving in together and side projects. It also extracts places, roles, amounts and durations. It never invents salaries or prices: unknown values are flagged as *Needs input*. |
+| **Template library** | 23 ready-made decisions in five searchable sections (Work & career, Money, Life & home, Studies & skills, Papers & obligations). |
+| **Plan together** | The administrator creates accounts for a partner, family or friends (Settings → People). The owner of a decision shares it as editor or viewer; everyone sees the same scenarios and results, while journals, reports and analyst chats stay private. |
+| **How it works** | A plain-language guide and glossary inside the app, plus a one-line explanation on every workspace tab. |
 | **Multiple scenarios** | Up to 8 alternatives per decision. You can duplicate, rename, archive, delete and change the baseline. Each scenario has its own currency and exchange rate. |
 | **Value provenance** | Every assumption is labelled **You**, **AI estimate**, **External data** or **Assumption** (a system default or illustrative value). |
 | **Simulation engine** | A month-by-month cash-flow model covering salary, tax, job-search risk, living costs, inflation, one-off and recurring items, property and mortgage, debt, investments and free time. |

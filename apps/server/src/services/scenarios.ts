@@ -18,6 +18,7 @@ import { parseSettings, simulationOptions, type DecisionSettings, type ScenarioD
 import type { Db } from '../db/client';
 import { decisions, scenarioFlows, scenarioVariables, scenarios, simulationResults, simulationRuns } from '../db/schema';
 import { notFound } from '../lib/errors';
+import { requireScenarioAccess, type AccessNeed } from './access';
 
 type ScenarioRow = typeof scenarios.$inferSelect;
 type VariableRow = typeof scenarioVariables.$inferSelect;
@@ -117,11 +118,11 @@ export function toEngineModel(s: Pick<ScenarioDTO, 'startDate' | 'horizonYears' 
 }
 
 /** Settings and base currency of the decisions owning these scenarios. */
-async function decisionContext(db: Tx, decisionIds: string[]): Promise<Map<string, { settings: DecisionSettings; baseCurrency: string }>> {
+async function decisionContext(db: Tx, decisionIds: string[]): Promise<Map<string, { settings: DecisionSettings; baseCurrency: string; ownerId: string }>> {
   const ids = [...new Set(decisionIds)];
   if (ids.length === 0) return new Map();
-  const rows = await db.select({ id: decisions.id, settings: decisions.settings, baseCurrency: decisions.baseCurrency }).from(decisions).where(inArray(decisions.id, ids));
-  return new Map(rows.map((r) => [r.id, { settings: parseSettings(r.settings), baseCurrency: r.baseCurrency }]));
+  const rows = await db.select({ id: decisions.id, settings: decisions.settings, baseCurrency: decisions.baseCurrency, ownerId: decisions.userId }).from(decisions).where(inArray(decisions.id, ids));
+  return new Map(rows.map((r) => [r.id, { settings: parseSettings(r.settings), baseCurrency: r.baseCurrency, ownerId: r.ownerId }]));
 }
 
 export function optionsFor(s: ScenarioDTO, ctx: { settings: DecisionSettings; baseCurrency: string } | undefined): SimulationOptions {
@@ -202,14 +203,10 @@ export async function hydrateScenarios(db: Tx, rows: ScenarioRow[]): Promise<Sce
   return dtos;
 }
 
-export async function loadScenario(db: Tx, userId: string, scenarioId: string): Promise<ScenarioDTO> {
-  const rows = await db
-    .select()
-    .from(scenarios)
-    .where(and(eq(scenarios.id, scenarioId), eq(scenarios.userId, userId)))
-    .limit(1);
-  if (!rows[0]) throw notFound('Scenario');
-  const [dto] = await hydrateScenarios(db, rows);
+/** Loads a scenario the user may access at the required level (default: change it). */
+export async function loadScenario(db: Tx, userId: string, scenarioId: string, need: AccessNeed = 'edit'): Promise<ScenarioDTO> {
+  const row = await requireScenarioAccess(db, userId, scenarioId, need);
+  const [dto] = await hydrateScenarios(db, [row]);
   return dto!;
 }
 
@@ -225,7 +222,10 @@ export async function loadScenariosForDecision(db: Tx, decisionId: string): Prom
  */
 export async function ensureRun(db: Tx, userId: string, scenario: ScenarioDTO): Promise<SimulationRunDTO> {
   const model = toEngineModel(scenario);
-  const options = optionsFor(scenario, (await decisionContext(db, [scenario.decisionId])).get(scenario.decisionId));
+  const ctx = (await decisionContext(db, [scenario.decisionId])).get(scenario.decisionId);
+  // Runs belong to the decision's owner, whoever triggered them, so they survive if a collaborator leaves.
+  const ownerId = ctx?.ownerId ?? userId;
+  const options = optionsFor(scenario, ctx);
   const hash = hashInputs(model, options);
   const existing = await db
     .select()
@@ -246,7 +246,7 @@ export async function ensureRun(db: Tx, userId: string, scenario: ScenarioDTO): 
     .insert(simulationRuns)
     .values({
       scenarioId: scenario.id,
-      userId,
+      userId: ownerId,
       scenarioVersion: scenario.version,
       engineVersion: ENGINE_VERSION,
       inputHash: hash,
@@ -265,10 +265,15 @@ export async function loadRun(db: Tx, userId: string, runId: string): Promise<Si
     .select()
     .from(simulationRuns)
     .innerJoin(simulationResults, eq(simulationResults.runId, simulationRuns.id))
-    .where(and(eq(simulationRuns.id, runId), eq(simulationRuns.userId, userId)))
+    .where(eq(simulationRuns.id, runId))
     .limit(1);
   const r = rows[0];
   if (!r) throw notFound('Simulation run');
+  try {
+    await requireScenarioAccess(db, userId, r.simulation_runs.scenarioId, 'view');
+  } catch {
+    throw notFound('Simulation run');
+  }
   return {
     ...runMeta(r.simulation_runs),
     scenarioId: r.simulation_runs.scenarioId,

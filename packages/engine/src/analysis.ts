@@ -416,8 +416,9 @@ export function robustness(scenarios: AnalysisScenario[]): Robustness {
     if (expectedLeader?.id === o.id && o.winProbability < 0.5) o.labels.push('optimism_dependent');
     else if (o.p50 < expectedFinal * 0.85 && expectedFinal > 0) o.labels.push('optimism_dependent');
     if ((o.shortfallProbability ?? 0) >= 0.25 || (s.result.uncertainty!.lossProbability ?? 0) >= 0.25) o.labels.push('vulnerable');
-    if (o.p90 === maxP90 && out.length > 1) o.labels.push('highest_upside');
-    if (o.p10 === maxP10 && out.length > 1) o.labels.push('lowest_downside');
+    // Only a single clear winner earns these labels; ties (e.g. before inputs are filled) earn none.
+    if (o.p90 === maxP90 && out.filter((x) => x.p90 === maxP90).length === 1) o.labels.push('highest_upside');
+    if (o.p10 === maxP10 && out.filter((x) => x.p10 === maxP10).length === 1) o.labels.push('lowest_downside');
   }
   const robustLeader = [...out].sort((a, b) => b.winProbability - a.winProbability || a.expectedRegret - b.expectedRegret)[0];
   return { comparable: true, runs, reason: null, scenarios: out, expectedLeaderId: expectedLeader?.id ?? null, robustLeaderId: robustLeader?.id ?? null };

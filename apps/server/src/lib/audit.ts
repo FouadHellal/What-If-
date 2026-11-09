@@ -4,6 +4,14 @@ import { auditLog } from '../db/schema';
 
 export type AuditAction =
   | 'auth.register'
+  | 'decision.shared'
+  | 'decision.share_changed'
+  | 'decision.unshared'
+  | 'decision.left'
+  | 'admin.user_created'
+  | 'admin.user_updated'
+  | 'admin.password_reset'
+  | 'admin.user_deleted'
   | 'auth.login'
   | 'auth.login_failed'
   | 'auth.locked'

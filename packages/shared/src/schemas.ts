@@ -30,6 +30,12 @@ export const DECISION_CATEGORIES = [
   'working_hours',
   'study_path',
   'certification',
+  'military_service',
+  'study_abroad',
+  'remote_work',
+  'public_private',
+  'move_in_together',
+  'side_income',
   'other',
 ] as const;
 export const decisionCategory = z.enum(DECISION_CATEGORIES);
@@ -66,6 +72,33 @@ export const deleteAccountSchema = z.object({
   password: z.string().min(1).max(200),
   confirm: z.literal('DELETE'),
 });
+
+// ── People: accounts created by the administrator, shared decisions ────────
+
+export const USER_ROLES = ['admin', 'member'] as const;
+export const userRole = z.enum(USER_ROLES);
+
+export const adminCreateUserSchema = z.object({
+  email: z.string().trim().toLowerCase().pipe(z.email('Enter a valid email address').max(254)),
+  name: z.string().trim().min(1, 'Enter a name').max(80),
+  password: passwordSchema,
+  role: userRole.default('member'),
+});
+export type AdminCreateUserInput = z.input<typeof adminCreateUserSchema>;
+
+export const adminUpdateUserSchema = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
+  role: userRole.optional(),
+});
+
+export const adminResetPasswordSchema = z.object({ password: passwordSchema });
+
+export const SHARE_ROLES = ['editor', 'viewer'] as const;
+export const shareRole = z.enum(SHARE_ROLES);
+export type ShareRole = z.infer<typeof shareRole>;
+
+export const shareDecisionSchema = z.object({ userId: z.uuid(), role: shareRole.default('editor') });
+export const updateShareSchema = z.object({ role: shareRole });
 
 // ── Profile / baseline ──────────────────────────────────────────────────────
 
@@ -297,6 +330,7 @@ export const listDecisionsQuery = z.object({
   status: z.union([decisionStatus, z.literal('active'), z.literal('all')]).default('active'),
   category: decisionCategory.optional(),
   sort: z.enum(['updated', 'created', 'title']).default('updated'),
+  shared: z.enum(['all', 'mine', 'with_me']).default('all'),
   page: z.coerce.number().int().min(1).max(10_000).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });

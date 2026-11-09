@@ -12,6 +12,7 @@ export default function Decisions() {
   const status = params.get('status') ?? 'active';
   const category = params.get('category') ?? '';
   const sort = params.get('sort') ?? 'updated';
+  const shared = params.get('shared') ?? 'all';
   const page = Number(params.get('page') ?? 1) || 1;
   const [search, setSearch] = useState(q);
 
@@ -37,10 +38,10 @@ export default function Decisions() {
     setParams(next, { replace: true });
   };
 
-  const list = useDecisions({ q: q || undefined, status, category: category || undefined, sort, page });
+  const list = useDecisions({ q: q || undefined, status, category: category || undefined, sort, page, shared: shared === 'all' ? undefined : shared });
   const data = list.data;
   const pages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
-  const filtered = Boolean(q || category || status !== 'active');
+  const filtered = Boolean(q || category || status !== 'active' || shared !== 'all');
 
   return (
     <div className="page">
@@ -75,6 +76,11 @@ export default function Decisions() {
               {c.label}
             </option>
           ))}
+        </Select>
+        <Select aria-label="Whose decisions" value={shared} onChange={(e) => update({ shared: e.target.value === 'all' ? '' : e.target.value, page: '' })}>
+          <option value="all">Mine and shared</option>
+          <option value="mine">Only mine</option>
+          <option value="with_me">Shared with me</option>
         </Select>
         <Select aria-label="Sort by" value={sort} onChange={(e) => update({ sort: e.target.value })}>
           <option value="updated">Last modified</option>

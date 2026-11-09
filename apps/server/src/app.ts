@@ -19,6 +19,7 @@ import { journalRoutes } from './routes/journal';
 import { aiRoutes } from './routes/ai';
 import { reportRoutes } from './routes/reports';
 import { labRoutes } from './routes/lab';
+import { peopleRoutes } from './routes/people';
 
 export interface BuildOptions {
   config: Config;
@@ -106,6 +107,7 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   await app.register(aiRoutes);
   await app.register(reportRoutes);
   await app.register(labRoutes);
+  await app.register(peopleRoutes);
 
   app.all('/api/*', async (_req, reply) => {
     reply.status(404);

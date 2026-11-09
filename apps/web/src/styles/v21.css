@@ -1,0 +1,188 @@
+/* v2.1 — people, sharing, template library, help. Uses the tokens in tokens.css. */
+
+.ws-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.ws-fieldset:disabled {
+  /* Controls are disabled natively; keep content readable. */
+  opacity: 1;
+}
+
+.tab-hint {
+  margin: calc(var(--s-2) * -1) 0 var(--s-5);
+  color: var(--text-3);
+  font-size: var(--text-sm);
+}
+
+.people-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.people-chip:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.share-add {
+  display: grid;
+  grid-template-columns: 1fr 160px auto;
+  gap: var(--s-3);
+  align-items: end;
+  padding-bottom: var(--s-4);
+  margin-bottom: var(--s-4);
+  border-bottom: 1px solid var(--border);
+}
+.share-add .field {
+  margin: 0;
+}
+.share-add .empty-state {
+  grid-column: 1 / -1;
+}
+@media (max-width: 640px) {
+  .share-add {
+    grid-template-columns: 1fr;
+  }
+}
+
+.people-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-2);
+}
+.people-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-width: 0;
+}
+.people-list .who {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.people-list .who small {
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.people-list select {
+  width: auto;
+}
+.avatar {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: var(--text-sm);
+}
+
+.credentials {
+  margin: 0;
+  padding: var(--s-4);
+  background: var(--surface-sunken);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: all;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+.small {
+  font-size: var(--text-xs);
+}
+
+.template-search {
+  max-width: 420px;
+  margin-bottom: var(--s-5);
+}
+.template-group-desc {
+  margin: -4px 0 var(--s-3);
+  color: var(--text-3);
+  font-size: var(--text-sm);
+}
+
+.help-page .page-subtitle {
+  max-width: 64ch;
+}
+.help-steps {
+  list-style: none;
+  margin: 0 0 var(--s-4);
+  padding: 0;
+  display: grid;
+  gap: var(--s-4);
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+.help-steps li {
+  display: flex;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+}
+.help-steps p {
+  margin: 4px 0 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+.step-n {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: var(--text-inverse);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+.glossary {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--s-3) var(--s-6);
+  margin: 0;
+}
+.glossary div {
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+.glossary dt {
+  font-weight: 600;
+}
+.glossary dd {
+  margin: 2px 0 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+}
+.help-notes {
+  color: var(--text-2);
+  line-height: 1.6;
+  max-width: 72ch;
+}

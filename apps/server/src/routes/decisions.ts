@@ -31,13 +31,13 @@ import {
   assumptionDTO,
   createDecision,
   getDecisionDTO,
-  getOwnedDecision,
   insertScenario,
   listDecisionSummaries,
   milestoneDTO,
   summarize,
   touchDecision,
 } from '../services/decisions';
+import { requireDecision, visibleDecisions } from '../services/access';
 import { ensureRun, loadRun, loadScenario, loadScenariosForDecision, toEngineModel, writeModel } from '../services/scenarios';
 import { aiDraft } from '../services/ai/service';
 import { baselineFromProfile, getProfile } from './account';
@@ -59,12 +59,12 @@ export async function decisionRoutes(app: FastifyInstance) {
     const active = await db
       .select()
       .from(decisions)
-      .where(and(eq(decisions.userId, user.id), ne(decisions.status, 'archived')))
+      .where(and(visibleDecisions(db, user.id), ne(decisions.status, 'archived')))
       .orderBy(desc(decisions.updatedAt))
       .limit(6);
     const month = currentMonth();
     const [counts, scenCount, journalCount, upcoming, recentScen, recentJournal, decided] = await Promise.all([
-      db.select({ n: count() }).from(decisions).where(and(eq(decisions.userId, user.id), ne(decisions.status, 'archived'))),
+      db.select({ n: count() }).from(decisions).where(and(visibleDecisions(db, user.id), ne(decisions.status, 'archived'))),
       db.select({ n: count() }).from(scenarios).where(and(eq(scenarios.userId, user.id), eq(scenarios.status, 'active'))),
       db.select({ n: count() }).from(journalEntries).where(eq(journalEntries.userId, user.id)),
       db
@@ -72,14 +72,14 @@ export async function decisionRoutes(app: FastifyInstance) {
         .from(milestones)
         .innerJoin(decisions, eq(decisions.id, milestones.decisionId))
         .leftJoin(scenarios, eq(scenarios.id, milestones.scenarioId))
-        .where(and(eq(decisions.userId, user.id), gte(milestones.date, month), eq(milestones.status, 'planned'), ne(decisions.status, 'archived')))
+        .where(and(visibleDecisions(db, user.id), gte(milestones.date, month), eq(milestones.status, 'planned'), ne(decisions.status, 'archived')))
         .orderBy(asc(milestones.date))
         .limit(8),
       db
         .select({ id: scenarios.id, name: scenarios.name, decisionId: scenarios.decisionId, decisionTitle: decisions.title, updatedAt: scenarios.updatedAt, colorIndex: scenarios.colorIndex })
         .from(scenarios)
         .innerJoin(decisions, eq(decisions.id, scenarios.decisionId))
-        .where(and(eq(scenarios.userId, user.id), eq(scenarios.status, 'active'), ne(decisions.status, 'archived')))
+        .where(and(visibleDecisions(db, user.id), eq(scenarios.status, 'active'), ne(decisions.status, 'archived')))
         .orderBy(desc(scenarios.updatedAt))
         .limit(5),
       db
@@ -89,7 +89,7 @@ export async function decisionRoutes(app: FastifyInstance) {
         .where(eq(journalEntries.userId, user.id))
         .orderBy(desc(journalEntries.entryDate), desc(journalEntries.createdAt))
         .limit(4),
-      db.select({ n: count() }).from(decisions).where(and(eq(decisions.userId, user.id), eq(decisions.status, 'decided'))),
+      db.select({ n: count() }).from(decisions).where(and(visibleDecisions(db, user.id), eq(decisions.status, 'decided'))),
     ]);
     const hasExample = (await db.select({ id: decisions.id }).from(decisions).where(and(eq(decisions.userId, user.id), eq(decisions.isExample, true))).limit(1)).length > 0;
 
@@ -98,7 +98,7 @@ export async function decisionRoutes(app: FastifyInstance) {
     const openDecisions = await db
       .select({ id: decisions.id, title: decisions.title, status: decisions.status, updatedAt: decisions.updatedAt, decidedAt: decisions.decidedAt })
       .from(decisions)
-      .where(and(eq(decisions.userId, user.id), ne(decisions.status, 'archived')))
+      .where(and(visibleDecisions(db, user.id), ne(decisions.status, 'archived')))
       .orderBy(desc(decisions.updatedAt))
       .limit(50);
     const openIds = openDecisions.map((d) => d.id);
@@ -165,7 +165,7 @@ export async function decisionRoutes(app: FastifyInstance) {
       }),
       recentReports: recentRep.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
       profileCompleteness,
-      activeDecisions: await summarize(db, active),
+      activeDecisions: await summarize(db, active, user.id),
       upcomingMilestones: upcoming.map((u) => ({ ...milestoneDTO(u.m), decisionTitle: u.decisionTitle, scenarioName: u.scenarioName, derived: false })),
       recentScenarios: recentScen.map((s) => ({ ...s, updatedAt: s.updatedAt.toISOString() })),
       recentJournal: recentJournal.map((r) => journalDTO(r.j, r.decisionTitle)),
@@ -231,7 +231,7 @@ export async function decisionRoutes(app: FastifyInstance) {
     const user = requireUser(request);
     const { id } = parse(idParam, request.params);
     const input = parse(updateDecisionSchema, request.body);
-    const current = await getOwnedDecision(db, user.id, id);
+    const current = await requireDecision(db, user.id, id, 'edit');
     const { settings: settingsPatch, ...rest } = input;
     const patch: Partial<typeof decisions.$inferInsert> = { ...rest, updatedAt: new Date() };
     if (settingsPatch) {
@@ -245,7 +245,7 @@ export async function decisionRoutes(app: FastifyInstance) {
   app.delete('/api/decisions/:id', async (request) => {
     const user = requireUser(request);
     const { id } = parse(idParam, request.params);
-    const d = await getOwnedDecision(db, user.id, id);
+    const d = await requireDecision(db, user.id, id, 'owner');
     await db.delete(decisions).where(eq(decisions.id, id));
     await audit(db, request, 'decision.deleted', { entityType: 'decision', entityId: id, metadata: { example: d.isExample } });
     return { ok: true };
@@ -256,7 +256,7 @@ export async function decisionRoutes(app: FastifyInstance) {
     const user = requireUser(request);
     const { id } = parse(idParam, request.params);
     const input = parse(recordDecisionSchema, request.body);
-    const d = await getOwnedDecision(db, user.id, id);
+    const d = await requireDecision(db, user.id, id, 'edit');
     if (input.chosenScenarioId === null) {
       await db.update(decisions).set({ chosenScenarioId: null, decidedRunId: null, decidedAt: null, status: 'deciding', updatedAt: new Date() }).where(eq(decisions.id, id));
       return getDecisionDTO(db, user.id, id);
@@ -288,7 +288,7 @@ export async function decisionRoutes(app: FastifyInstance) {
   app.post('/api/decisions/:id/scenarios', async (request, reply) => {
     const user = requireUser(request);
     const { id } = parse(idParam, request.params);
-    const d = await getOwnedDecision(db, user.id, id);
+    const d = await requireDecision(db, user.id, id, 'edit');
     const body = parse(z.object({ fromScenarioId: z.uuid().optional(), draft: scenarioDraftSchema.optional(), name: z.string().trim().min(1).max(120).optional() }), request.body ?? {});
     const existing = await db.select({ n: count(), p: max(scenarios.position) }).from(scenarios).where(eq(scenarios.decisionId, id));
     const n = Number(existing[0]?.n ?? 0);
@@ -306,7 +306,8 @@ export async function decisionRoutes(app: FastifyInstance) {
       draft = { ...t.scenarios[1]!, name: body.name ?? 'New scenario', isBaseline: n === 0 };
     }
     const scenarioId = await db.transaction(async (tx) => {
-      const sid = await insertScenario(tx, user.id, id, draft, position, position % 8);
+      // Scenarios belong to the decision's owner, whoever adds them.
+      const sid = await insertScenario(tx, d.userId, id, draft, position, position % 8);
       if (body.fromScenarioId) {
         const srcAssumptions = await tx.select().from(assumptions).where(eq(assumptions.scenarioId, body.fromScenarioId));
         if (srcAssumptions.length) {
@@ -400,14 +401,14 @@ export async function decisionRoutes(app: FastifyInstance) {
   app.get('/api/scenarios/:id/simulation', async (request) => {
     const user = requireUser(request);
     const { id } = parse(idParam, request.params);
-    const s = await loadScenario(db, user.id, id);
+    const s = await loadScenario(db, user.id, id, 'view');
     return ensureRun(db, user.id, s);
   });
 
   app.get('/api/scenarios/:id/runs', async (request) => {
     const user = requireUser(request);
     const { id } = parse(idParam, request.params);
-    await loadScenario(db, user.id, id);
+    await loadScenario(db, user.id, id, 'view');
     const { simulationRuns } = await import('../db/schema');
     const rows = await db
       .select({ id: simulationRuns.id, scenarioVersion: simulationRuns.scenarioVersion, engineVersion: simulationRuns.engineVersion, inputHash: simulationRuns.inputHash, seed: simulationRuns.seed, runs: simulationRuns.runs, createdAt: simulationRuns.createdAt, durationMs: simulationRuns.durationMs })
@@ -443,9 +444,9 @@ export async function decisionRoutes(app: FastifyInstance) {
   app.post('/api/decisions/:id/assumptions', async (request, reply) => {
     const user = requireUser(request);
     const { id } = parse(idParam, request.params);
-    await getOwnedDecision(db, user.id, id);
+    await requireDecision(db, user.id, id, 'edit');
     const input = parse(assumptionInputSchema.extend({ scenarioId: z.uuid().nullable().optional() }), request.body);
-    if (input.scenarioId) await assertScenarioInDecision(user.id, input.scenarioId, id);
+    if (input.scenarioId) await assertScenarioInDecision(input.scenarioId, id);
     const [row] = await db
       .insert(assumptions)
       .values({ decisionId: id, scenarioId: input.scenarioId ?? null, text: input.text, category: input.category, source: input.source, likelihood: input.likelihood ?? null, impact: input.impact ?? null })
@@ -476,9 +477,9 @@ export async function decisionRoutes(app: FastifyInstance) {
   app.post('/api/decisions/:id/milestones', async (request, reply) => {
     const user = requireUser(request);
     const { id } = parse(idParam, request.params);
-    await getOwnedDecision(db, user.id, id);
+    await requireDecision(db, user.id, id, 'edit');
     const input = parse(milestoneSchema, request.body);
-    if (input.scenarioId) await assertScenarioInDecision(user.id, input.scenarioId, id);
+    if (input.scenarioId) await assertScenarioInDecision(input.scenarioId, id);
     const [row] = await db
       .insert(milestones)
       .values({ decisionId: id, scenarioId: input.scenarioId ?? null, title: input.title, description: input.description ?? null, date: input.date, status: input.status, achievedOn: input.achievedOn ?? null })
@@ -493,7 +494,7 @@ export async function decisionRoutes(app: FastifyInstance) {
     const { id } = parse(idParam, request.params);
     const input = parse(updateMilestoneSchema, request.body);
     const row = await ownedMilestone(user.id, id);
-    if (input.scenarioId) await assertScenarioInDecision(user.id, input.scenarioId, row.decisionId);
+    if (input.scenarioId) await assertScenarioInDecision(input.scenarioId, row.decisionId);
     const [updated] = await db.update(milestones).set({ ...input, updatedAt: new Date() }).where(eq(milestones.id, id)).returning();
     return milestoneDTO(updated!);
   });
@@ -506,31 +507,28 @@ export async function decisionRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  async function assertScenarioInDecision(userId: string, scenarioId: string, decisionId: string) {
-    const rows = await db.select({ id: scenarios.id }).from(scenarios).where(and(eq(scenarios.id, scenarioId), eq(scenarios.decisionId, decisionId), eq(scenarios.userId, userId))).limit(1);
+  /** The caller has already checked access to the decision. */
+  async function assertScenarioInDecision(scenarioId: string, decisionId: string) {
+    const rows = await db.select({ id: scenarios.id }).from(scenarios).where(and(eq(scenarios.id, scenarioId), eq(scenarios.decisionId, decisionId))).limit(1);
     if (!rows[0]) throw badRequest('That scenario does not belong to this decision.');
   }
 
   async function ownedAssumption(userId: string, id: string) {
-    const rows = await db
-      .select({ a: assumptions })
-      .from(assumptions)
-      .innerJoin(decisions, eq(decisions.id, assumptions.decisionId))
-      .where(and(eq(assumptions.id, id), eq(decisions.userId, userId)))
-      .limit(1);
+    const rows = await db.select().from(assumptions).where(eq(assumptions.id, id)).limit(1);
     if (!rows[0]) throw notFound('Assumption');
-    return rows[0].a;
+    await requireDecision(db, userId, rows[0].decisionId, 'edit').catch((e: { statusCode?: number }) => {
+      throw e.statusCode === 404 ? notFound('Assumption') : e;
+    });
+    return rows[0];
   }
 
   async function ownedMilestone(userId: string, id: string) {
-    const rows = await db
-      .select({ m: milestones })
-      .from(milestones)
-      .innerJoin(decisions, eq(decisions.id, milestones.decisionId))
-      .where(and(eq(milestones.id, id), eq(decisions.userId, userId)))
-      .limit(1);
+    const rows = await db.select().from(milestones).where(eq(milestones.id, id)).limit(1);
     if (!rows[0]) throw notFound('Milestone');
-    return rows[0].m;
+    await requireDecision(db, userId, rows[0].decisionId, 'edit').catch((e: { statusCode?: number }) => {
+      throw e.statusCode === 404 ? notFound('Milestone') : e;
+    });
+    return rows[0];
   }
 
 }

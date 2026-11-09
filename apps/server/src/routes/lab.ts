@@ -16,7 +16,9 @@ import {
 import { evidence, experiments, scenarios } from '../db/schema';
 import { AppError, badRequest, conflict, notFound, parse } from '../lib/errors';
 import { requireUser } from '../http/auth';
-import { getOwnedDecision, insertScenario, touchDecision } from '../services/decisions';
+import { insertScenario, touchDecision } from '../services/decisions';
+import { requireDecision } from '../services/access';
+import { users } from '../db/schema';
 import { ensureRun, loadScenario, toEngineModel, writeModel } from '../services/scenarios';
 import { exchangeRate, inflation } from '../services/research';
 
@@ -37,7 +39,7 @@ function metrics(r: SimulationResult): ExperimentMetrics {
 
 type ExpRow = typeof experiments.$inferSelect;
 
-function experimentDTO(row: ExpRow, scenarioName: string | null, currentVersion: number | null): ExperimentDTO {
+function experimentDTO(row: ExpRow, scenarioName: string | null, currentVersion: number | null, createdBy: string | null = null): ExperimentDTO {
   const sum = row.summary as { original: ExperimentMetrics; variant: ExperimentMetrics; currency: string };
   return {
     id: row.id,
@@ -53,11 +55,12 @@ function experimentDTO(row: ExpRow, scenarioName: string | null, currentVersion:
     variant: sum.variant,
     currency: sum.currency,
     engineVersion: row.engineVersion,
+    createdBy,
     createdAt: row.createdAt.toISOString(),
   };
 }
 
-function evidenceDTO(r: typeof evidence.$inferSelect): EvidenceDTO {
+function evidenceDTO(r: typeof evidence.$inferSelect, createdBy: string | null = null): EvidenceDTO {
   return {
     id: r.id,
     decisionId: r.decisionId,
@@ -72,6 +75,7 @@ function evidenceDTO(r: typeof evidence.$inferSelect): EvidenceDTO {
     uncertainty: r.uncertainty,
     note: r.note,
     origin: r.origin,
+    createdBy,
     createdAt: r.createdAt.toISOString(),
   };
 }
@@ -83,22 +87,23 @@ export async function labRoutes(app: FastifyInstance) {
   app.get('/api/decisions/:id/experiments', async (request) => {
     const user = requireUser(request);
     const { id } = parse(idParam, request.params);
-    await getOwnedDecision(db, user.id, id);
+    await requireDecision(db, user.id, id, 'view');
     const rows = await db
-      .select({ e: experiments, name: scenarios.name, version: scenarios.version })
+      .select({ e: experiments, name: scenarios.name, version: scenarios.version, by: users.name })
       .from(experiments)
       .innerJoin(scenarios, eq(scenarios.id, experiments.scenarioId))
-      .where(and(eq(experiments.decisionId, id), eq(experiments.userId, user.id)))
+      .leftJoin(users, eq(users.id, experiments.userId))
+      .where(eq(experiments.decisionId, id))
       .orderBy(desc(experiments.createdAt))
       .limit(100);
-    return rows.map((r) => experimentDTO(r.e, r.name, r.version));
+    return rows.map((r) => experimentDTO(r.e, r.name, r.version, r.by));
   });
 
   app.post('/api/decisions/:id/experiments', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = requireUser(request);
     const { id } = parse(idParam, request.params);
     const input = parse(experimentInputSchema, request.body);
-    const decision = await getOwnedDecision(db, user.id, id);
+    const decision = await requireDecision(db, user.id, id, 'edit');
     const scenario = await loadScenario(db, user.id, input.scenarioId);
     if (scenario.decisionId !== id) throw badRequest('That scenario belongs to a different decision.');
     const base = toEngineModel(scenario);
@@ -129,28 +134,32 @@ export async function labRoutes(app: FastifyInstance) {
       })
       .returning();
     reply.status(201);
-    return experimentDTO(row!, scenario.name, scenario.version);
+    return experimentDTO(row!, scenario.name, scenario.version, user.name);
   });
 
   app.get('/api/experiments/:id', async (request): Promise<ExperimentDetailDTO> => {
     const user = requireUser(request);
     const { id } = parse(idParam, request.params);
     const rows = await db
-      .select({ e: experiments, name: scenarios.name, version: scenarios.version })
+      .select({ e: experiments, name: scenarios.name, version: scenarios.version, by: users.name })
       .from(experiments)
       .innerJoin(scenarios, eq(scenarios.id, experiments.scenarioId))
-      .where(and(eq(experiments.id, id), eq(experiments.userId, user.id)))
+      .leftJoin(users, eq(users.id, experiments.userId))
+      .where(eq(experiments.id, id))
       .limit(1);
     const r = rows[0];
     if (!r) throw notFound('Experiment');
-    return { ...experimentDTO(r.e, r.name, r.version), baseInputs: r.e.baseInputs as ScenarioModel, inputs: r.e.inputs as ScenarioModel };
+    await requireDecision(db, user.id, r.e.decisionId, 'view').catch(() => {
+      throw notFound('Experiment');
+    });
+    return { ...experimentDTO(r.e, r.name, r.version, r.by), baseInputs: r.e.baseInputs as ScenarioModel, inputs: r.e.inputs as ScenarioModel };
   });
 
   app.delete('/api/experiments/:id', async (request) => {
     const user = requireUser(request);
     const { id } = parse(idParam, request.params);
-    const res = await db.delete(experiments).where(and(eq(experiments.id, id), eq(experiments.userId, user.id))).returning({ id: experiments.id });
-    if (!res[0]) throw notFound('Experiment');
+    const exp = await experimentFor(user.id, id, 'edit');
+    await db.delete(experiments).where(eq(experiments.id, exp.id));
     return { ok: true };
   });
 
@@ -159,9 +168,7 @@ export async function labRoutes(app: FastifyInstance) {
     const user = requireUser(request);
     const { id } = parse(idParam, request.params);
     const { mode } = parse(z.object({ mode: z.enum(['update', 'new']) }), request.body);
-    const rows = await db.select().from(experiments).where(and(eq(experiments.id, id), eq(experiments.userId, user.id))).limit(1);
-    const exp = rows[0];
-    if (!exp) throw notFound('Experiment');
+    const exp = await experimentFor(user.id, id, 'edit');
     const scenario = await loadScenario(db, user.id, exp.scenarioId);
     const inputs = exp.inputs as ScenarioModel;
     if (mode === 'update') {
@@ -184,10 +191,11 @@ export async function labRoutes(app: FastifyInstance) {
     }
     const count = await db.select({ id: scenarios.id }).from(scenarios).where(eq(scenarios.decisionId, scenario.decisionId));
     if (count.length >= 8) throw badRequest('A decision can have at most 8 scenarios. Archive or delete one first.');
+    const owner = await requireDecision(db, user.id, scenario.decisionId, 'edit');
     const newId = await db.transaction((tx) =>
       insertScenario(
         tx,
-        user.id,
+        owner.userId,
         scenario.decisionId,
         {
           ...scenario,
@@ -211,15 +219,21 @@ export async function labRoutes(app: FastifyInstance) {
   app.get('/api/decisions/:id/evidence', async (request) => {
     const user = requireUser(request);
     const { id } = parse(idParam, request.params);
-    await getOwnedDecision(db, user.id, id);
-    const rows = await db.select().from(evidence).where(and(eq(evidence.decisionId, id), eq(evidence.userId, user.id))).orderBy(desc(evidence.createdAt)).limit(200);
-    return rows.map(evidenceDTO);
+    await requireDecision(db, user.id, id, 'view');
+    const rows = await db
+      .select({ ev: evidence, by: users.name })
+      .from(evidence)
+      .leftJoin(users, eq(users.id, evidence.userId))
+      .where(eq(evidence.decisionId, id))
+      .orderBy(desc(evidence.createdAt))
+      .limit(200);
+    return rows.map((r) => evidenceDTO(r.ev, r.by));
   });
 
   app.post('/api/decisions/:id/evidence', async (request, reply) => {
     const user = requireUser(request);
     const { id } = parse(idParam, request.params);
-    await getOwnedDecision(db, user.id, id);
+    await requireDecision(db, user.id, id, 'edit');
     const input = parse(evidenceInputSchema, request.body);
     if (input.scenarioId) {
       const s = await loadScenario(db, user.id, input.scenarioId);
@@ -230,14 +244,18 @@ export async function labRoutes(app: FastifyInstance) {
       .values({ userId: user.id, decisionId: id, ...input, scenarioId: input.scenarioId ?? null, unit: input.unit ?? null, sourceUrl: input.sourceUrl ?? null, coverage: input.coverage ?? null, uncertainty: input.uncertainty ?? null, note: input.note ?? null })
       .returning();
     reply.status(201);
-    return evidenceDTO(row!);
+    return evidenceDTO(row!, user.name);
   });
 
   app.delete('/api/evidence/:id', async (request) => {
     const user = requireUser(request);
     const { id } = parse(idParam, request.params);
-    const res = await db.delete(evidence).where(and(eq(evidence.id, id), eq(evidence.userId, user.id))).returning({ id: evidence.id });
-    if (!res[0]) throw notFound('Evidence');
+    const rows = await db.select().from(evidence).where(eq(evidence.id, id)).limit(1);
+    if (!rows[0]) throw notFound('Evidence');
+    await requireDecision(db, user.id, rows[0].decisionId, 'edit').catch((e: { statusCode?: number }) => {
+      throw e.statusCode === 404 ? notFound('Evidence') : e;
+    });
+    await db.delete(evidence).where(eq(evidence.id, id));
     return { ok: true };
   });
 
@@ -245,7 +263,7 @@ export async function labRoutes(app: FastifyInstance) {
   app.post('/api/decisions/:id/research', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (request, reply) => {
     const user = requireUser(request);
     const { id } = parse(idParam, request.params);
-    await getOwnedDecision(db, user.id, id);
+    await requireDecision(db, user.id, id, 'edit');
     if (!app.ctx.config.externalData) {
       throw new AppError(409, 'research_disabled', 'External data lookups are turned off on this instance (EXTERNAL_DATA=off).');
     }
@@ -257,6 +275,16 @@ export async function labRoutes(app: FastifyInstance) {
       .values({ userId: user.id, decisionId: id, scenarioId, ...result, note: null })
       .returning();
     reply.status(201);
-    return evidenceDTO(row!);
+    return evidenceDTO(row!, user.name);
   });
+
+  async function experimentFor(userId: string, id: string, need: 'view' | 'edit') {
+    const rows = await db.select().from(experiments).where(eq(experiments.id, id)).limit(1);
+    const exp = rows[0];
+    if (!exp) throw notFound('Experiment');
+    await requireDecision(db, userId, exp.decisionId, need).catch((e: { statusCode?: number }) => {
+      throw e.statusCode === 404 ? notFound('Experiment') : e;
+    });
+    return exp;
+  }
 }

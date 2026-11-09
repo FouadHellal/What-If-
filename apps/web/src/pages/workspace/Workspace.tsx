@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { Archive, ArchiveRestore, ChartLine, ChevronRight, CircleCheck, CloudOff, Compass, FileText, Flag, FlaskConical, Gavel, Layers, Pencil, ShieldAlert, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, ChartLine, ChevronRight, CircleCheck, CloudOff, Compass, Eye, FileText, Flag, FlaskConical, Gavel, Layers, LogOut, Pencil, ShieldAlert, SlidersHorizontal, Sparkles, Trash2, Users } from 'lucide-react';
 import { DECISION_STATUSES, STATUS_LABELS, categoryInfo, type DecisionDTO, type DecisionStatus } from '@whatif/shared';
 import { del, patch, post } from '../../api/client';
 import { keys, useDecision } from '../../api/queries';
@@ -20,16 +20,17 @@ import { TimelineTab } from './TimelineTab';
 import { RisksTab } from './RisksTab';
 import { AnalystTab } from './AnalystPanels';
 import { DecideTab } from './DecideTab';
+import { ShareDialog } from './ShareDialog';
 
 const TABS = [
-  { id: 'summary', label: 'Summary', icon: Compass },
-  { id: 'scenarios', label: 'Scenarios', icon: Layers },
-  { id: 'compare', label: 'Compare', icon: ChartLine },
-  { id: 'lab', label: 'Lab', icon: FlaskConical },
-  { id: 'risks', label: 'Risks & sensitivity', icon: ShieldAlert },
-  { id: 'timeline', label: 'Timeline', icon: Flag },
-  { id: 'analyst', label: 'Analyst', icon: Sparkles },
-  { id: 'decide', label: 'Decide', icon: Gavel },
+  { id: 'summary', label: 'Summary', icon: Compass, hint: 'The short answer: which path looks best, how sure that is, and what is still missing.', edits: false },
+  { id: 'scenarios', label: 'Scenarios', icon: Layers, hint: 'Each path you are considering, with its numbers. Fill in anything marked “Needs your input”.', edits: true },
+  { id: 'compare', label: 'Compare', icon: ChartLine, hint: 'All paths side by side over time — money, time and how each fits your priorities.', edits: false },
+  { id: 'lab', label: 'Lab', icon: FlaskConical, hint: 'Try “what if this number were different?” without changing your scenarios.', edits: true },
+  { id: 'risks', label: 'Risks & sensitivity', icon: ShieldAlert, hint: 'Which guesses matter most, and how bad the bad cases get.', edits: false },
+  { id: 'timeline', label: 'Timeline', icon: Flag, hint: 'Milestones and dates, so you know what has to happen when.', edits: true },
+  { id: 'analyst', label: 'Analyst', icon: Sparkles, hint: 'Ask questions about this decision in plain language (needs an AI provider).', edits: false },
+  { id: 'decide', label: 'Decide', icon: Gavel, hint: 'Record what you chose and why, and make a report to keep or share.', edits: true },
 ] as const;
 export type TabId = (typeof TABS)[number]['id'];
 
@@ -72,7 +73,7 @@ export default function Workspace() {
   const active = useMemo(() => drafts.scenarios.filter((s) => s.status === 'active'), [drafts.scenarios]);
   const sim = useSimulations(drafts.scenarios, decision);
   const results = sim.results;
-  const { profile } = useSession();
+  const { profile, user } = useSession();
   const lifeWeights = (decision?.priorities ?? profile?.priorities ?? {}) as Record<string, number>;
   const intel = useIntelligence(decision, drafts.scenarios, results, lifeWeights);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -81,6 +82,8 @@ export default function Workspace() {
   const toast = useToast();
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [confirmLeave, setConfirmLeave] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -128,6 +131,9 @@ export default function Workspace() {
     }
   };
 
+  const isOwner = decision.access === 'owner';
+  const readOnly = decision.access === 'viewer';
+  const tabInfo = TABS.find((t) => t.id === tab)!;
   const ctx: WorkspaceContext = { decision, drafts, results, computing: sim.computing, intel: intel.data, intelLoading: intel.loading, lifeWeights, goTo, selectedId, refresh };
 
   return (
@@ -141,7 +147,7 @@ export default function Workspace() {
         <div className="ws-title-block">
           <h1 className="ws-title serif">{decision.title}</h1>
           <div className="ws-meta">
-            <Select aria-label="Status" className="status-select" value={decision.status} onChange={(e) => void setStatus(e.target.value as DecisionStatus)}>
+            <Select aria-label="Status" className="status-select" value={decision.status} disabled={readOnly} onChange={(e) => void setStatus(e.target.value as DecisionStatus)}>
               {DECISION_STATUSES.map((s) => (
                 <option key={s} value={s}>
                   {STATUS_LABELS[s]}
@@ -152,27 +158,48 @@ export default function Workspace() {
             <span>{decision.horizonYears}-year horizon</span>
             <span>Compared in {decision.baseCurrency}</span>
             {decision.isExample && <Badge outline>Example · illustrative values</Badge>}
+            {decision.people.members.length > 0 && (
+              <button type="button" className="people-chip" onClick={() => setShareOpen(true)} title="People on this decision">
+                <Users size={13} aria-hidden />
+                {[decision.people.owner, ...decision.people.members].map((p) => p.name.split(' ')[0]).join(', ')}
+              </button>
+            )}
             <SaveIndicator state={drafts.overall} onRetry={() => drafts.flush()} />
           </div>
         </div>
         <div className="row">
+          <Button icon={<Users aria-hidden />} onClick={() => setShareOpen(true)}>
+            {isOwner ? 'Share' : 'People'}
+          </Button>
           <Button icon={<FileText aria-hidden />} onClick={() => goTo('decide')} className="desktop-only">
             Report
           </Button>
           <Menu
-            items={[
-              { label: 'Edit title & description', icon: <Pencil />, onSelect: () => setEditing(true) },
-              { label: 'Simulation settings & goals', icon: <SlidersHorizontal />, onSelect: () => setSettingsOpen(true) },
-              decision.status === 'archived'
-                ? { label: 'Restore from archive', icon: <ArchiveRestore />, onSelect: () => void setStatus('exploring') }
-                : { label: 'Archive decision', icon: <Archive />, onSelect: () => void setStatus('archived') },
-              'sep',
-              { label: 'Delete decision', icon: <Trash2 />, danger: true, onSelect: () => setConfirmDelete(true) },
-            ]}
+            items={
+              readOnly
+                ? [{ label: 'Leave this decision', icon: <LogOut />, danger: true, onSelect: () => setConfirmLeave(true) }]
+                : [
+                    { label: 'Edit title & description', icon: <Pencil />, onSelect: () => setEditing(true) },
+                    { label: 'Simulation settings & goals', icon: <SlidersHorizontal />, onSelect: () => setSettingsOpen(true) },
+                    decision.status === 'archived'
+                      ? { label: 'Restore from archive', icon: <ArchiveRestore />, onSelect: () => void setStatus('exploring') }
+                      : { label: 'Archive decision', icon: <Archive />, onSelect: () => void setStatus('archived') },
+                    'sep',
+                    isOwner
+                      ? { label: 'Delete decision', icon: <Trash2 />, danger: true, onSelect: () => setConfirmDelete(true) }
+                      : { label: 'Leave this decision', icon: <LogOut />, danger: true, onSelect: () => setConfirmLeave(true) },
+                  ]
+            }
           />
         </div>
       </header>
       {decision.description && <p className="ws-description">{decision.description}</p>}
+      {!isOwner && (
+        <Callout icon={readOnly ? <Eye aria-hidden /> : <Users aria-hidden />}>
+          <strong>{decision.sharedBy}</strong> shared this decision with you.{' '}
+          {readOnly ? 'You can look at everything but not change it.' : 'You can change it together — your edits are saved for everyone.'}
+        </Callout>
+      )}
       {decision.status === 'archived' && (
         <Callout tone="warn">This decision is archived. It stays fully editable and is hidden from your active lists.</Callout>
       )}
@@ -188,16 +215,41 @@ export default function Workspace() {
         ))}
       </div>
 
+      <p className="tab-hint">{tabInfo.hint}</p>
+
       <div className="ws-body" role="tabpanel">
-        {tab === 'summary' && <SummaryTab ctx={ctx} openSettings={() => setSettingsOpen(true)} />}
-        {tab === 'lab' && <LabTab ctx={ctx} />}
-        {tab === 'compare' && <CompareTab ctx={ctx} />}
-        {tab === 'scenarios' && <ScenariosTab ctx={ctx} />}
-        {tab === 'timeline' && <TimelineTab ctx={ctx} />}
-        {tab === 'risks' && <RisksTab ctx={ctx} />}
-        {tab === 'analyst' && <AnalystTab ctx={ctx} />}
-        {tab === 'decide' && <DecideTab ctx={ctx} />}
+        {/* Viewers see the same screens with every control switched off. */}
+        <fieldset className="ws-fieldset" disabled={readOnly && tabInfo.edits}>
+          {tab === 'summary' && <SummaryTab ctx={ctx} openSettings={() => setSettingsOpen(true)} />}
+          {tab === 'lab' && <LabTab ctx={ctx} />}
+          {tab === 'compare' && <CompareTab ctx={ctx} />}
+          {tab === 'scenarios' && <ScenariosTab ctx={ctx} />}
+          {tab === 'timeline' && <TimelineTab ctx={ctx} />}
+          {tab === 'risks' && <RisksTab ctx={ctx} />}
+          {tab === 'analyst' && <AnalystTab ctx={ctx} />}
+          {tab === 'decide' && <DecideTab ctx={ctx} />}
+        </fieldset>
       </div>
+
+      <ShareDialog open={shareOpen} onClose={() => setShareOpen(false)} decision={decision} onChanged={refresh} />
+      <ConfirmDialog
+        open={confirmLeave}
+        onClose={() => setConfirmLeave(false)}
+        title="Leave this decision?"
+        description={`You will no longer see it. ${decision.sharedBy ?? 'The owner'} can share it with you again.`}
+        confirmLabel="Leave"
+        danger
+        onConfirm={async () => {
+          try {
+            await del(`/decisions/${decision.id}/people/${user!.id}`);
+            refresh();
+            navigate('/decisions', { replace: true });
+            toast('You left the decision.');
+          } catch (err) {
+            toast((err as Error).message, 'bad');
+          }
+        }}
+      />
 
       <DecisionSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} decision={decision} onSaved={(d) => qc.setQueryData(keys.decision(d.id), d)} />
       <EditDecisionDialog open={editing} onClose={() => setEditing(false)} decision={decision} onSaved={(d) => qc.setQueryData(keys.decision(d.id), d)} />

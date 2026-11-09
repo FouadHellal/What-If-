@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { NavLink, useNavigate, useParams } from 'react-router';
+import { Navigate, NavLink, useNavigate, useParams } from 'react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, KeyRound, Lock, LogOut, Server, ShieldCheck, Trash2 } from 'lucide-react';
 import { PRIORITY_FACTORS } from '@whatif/engine';
@@ -10,6 +10,7 @@ import { useSession } from '../../lib/session';
 import { dateLabel, relativeTime } from '../../lib/format';
 import { Badge, Button, Callout, ConfirmDialog, Dialog, Field, Input, NumberInput, Segmented, Select, Skeleton, Switch, Textarea, useToast } from '../../components/ui';
 import { PriorityPips } from '../Onboarding';
+import { PeopleSettings } from './PeopleSettings';
 
 const SECTIONS = [
   { id: 'profile', label: 'Baseline profile' },
@@ -17,6 +18,7 @@ const SECTIONS = [
   { id: 'ai', label: 'AI analyst' },
   { id: 'data', label: 'Your data' },
   { id: 'security', label: 'Security' },
+  { id: 'people', label: 'People', admin: true },
   { id: 'admin', label: 'Instance', admin: true },
 ];
 
@@ -26,6 +28,8 @@ export default function Settings() {
   useEffect(() => {
     document.title = 'Settings · What-If';
   }, []);
+  const allowed = SECTIONS.find((x) => x.id === section);
+  if (!allowed || (allowed.admin && user?.role !== 'admin')) return <Navigate to="/settings/profile" replace />;
   return (
     <div className="page">
       <header className="page-header">
@@ -47,6 +51,7 @@ export default function Settings() {
           {section === 'ai' && <AiSettings />}
           {section === 'data' && <DataSettings />}
           {section === 'security' && <SecuritySettings />}
+          {section === 'people' && user?.role === 'admin' && <PeopleSettings />}
           {section === 'admin' && user?.role === 'admin' && <AdminSettings />}
         </div>
       </div>
@@ -480,6 +485,14 @@ const ACTION_LABELS: Record<string, string> = {
   'scenario.deleted': 'Scenario deleted',
   'report.created': 'Report generated',
   'admin.settings_updated': 'Instance settings changed',
+  'decision.shared': 'Decision shared',
+  'decision.share_changed': 'Sharing access changed',
+  'decision.unshared': 'Person removed from a decision',
+  'decision.left': 'Left a shared decision',
+  'admin.user_created': 'Account created for someone',
+  'admin.user_updated': 'Account changed',
+  'admin.password_reset': 'Password reset for someone',
+  'admin.user_deleted': 'Account deleted by administrator',
 };
 
 function SecuritySettings() {

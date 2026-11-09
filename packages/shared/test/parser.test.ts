@@ -13,6 +13,7 @@ import {
   parseQuestion,
   scenarioModelSchema,
   CATEGORIES,
+  CATEGORY_GROUPS,
 } from '../src';
 
 describe('question parsing', () => {
@@ -48,6 +49,16 @@ describe('question parsing', () => {
       ['What if I work a four-day week?', 'working_hours'],
       ['What if I get my CCNP certification?', 'certification'],
       ['What if I do a degree or self-study?', 'study_path'],
+      ['What if I do my military service now instead of waiting for an exemption?', 'military_service'],
+      ['What if I do my service national after my degree?', 'military_service'],
+      ['What if I do a master’s in France?', 'study_abroad'],
+      ['What if I study abroad?', 'study_abroad'],
+      ['What if I freelance for clients in Europe while living in Algiers?', 'remote_work'],
+      ['What if I work remotely for a US company?', 'remote_work'],
+      ['What if I take the public sector job instead of the private one?', 'public_private'],
+      ['What if we move in together next year?', 'move_in_together'],
+      ['What if we get married next summer?', 'move_in_together'],
+      ['What if I start a side hustle selling online?', 'side_income'],
       ['What if I paint the fence?', 'other'],
     ];
     for (const [q, cat] of cases) expect(classify(q).category, q).toBe(cat);
@@ -120,6 +131,22 @@ describe('drafts', () => {
         expect(Number.isFinite(r.expected.summary.finalNetWorth)).toBe(true);
       }
     }
+  });
+});
+
+describe('template library', () => {
+  it('puts every template in a section', () => {
+    const groups = new Set(CATEGORY_GROUPS.map((g) => g.id));
+    for (const c of CATEGORIES) expect(groups.has(c.group), c.id).toBe(true);
+  });
+
+  it('military service compares waiting, serving now and serving after studies', () => {
+    const d = draftFromTemplate('military_service', { startDate: '2027-01', baseCurrency: 'DZD' });
+    expect(d.scenarios.map((s) => s.name)).toEqual(['Wait for an exemption', 'Serve now (1 year)', 'Defer, finish studies, then serve']);
+    const now = d.scenarios[1]!;
+    expect(now.flows.find((f) => f.kind === 'income_gap')).toMatchObject({ startMonth: 0, endMonth: 12 });
+    expect(now.flows.find((f) => f.kind === 'salary_change')!.startMonth).toBe(15);
+    expect(d.scenarios[2]!.flows.find((f) => f.kind === 'income_gap')).toMatchObject({ startMonth: 24, endMonth: 36 });
   });
 });
 

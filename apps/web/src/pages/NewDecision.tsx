@@ -1,22 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
-import { ArrowLeft, ArrowRight, Award, Briefcase, CircleAlert, Clock, GraduationCap, Home, Landmark, MapPin, Plane, Plus, Repeat, ShoppingBag, Sparkles, Store, Sun, Trash2, TrendingUp, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Award, Briefcase, Building2, CircleAlert, Clock, Globe, GraduationCap, Heart, Home, Landmark, MapPin, Plane, Plus, Repeat, Search, Shield, ShoppingBag, Sparkles, Store, Sun, Trash2, TrendingUp, Users, Zap } from 'lucide-react';
 import { VARIABLES } from '@whatif/engine';
-import { CATEGORIES, CURRENCIES, categoryInfo, type DecisionCategory, type DecisionDTO, type DecisionDraft, type ScenarioDraft } from '@whatif/shared';
+import { CATEGORIES, CATEGORY_GROUPS, CURRENCIES, categoryInfo, type DecisionCategory, type DecisionDTO, type DecisionDraft, type ScenarioDraft } from '@whatif/shared';
 import { ApiError, get, post } from '../api/client';
 import { useAiSettings, useInvalidateDecision } from '../api/queries';
 import { formatUnit } from '../lib/format';
 import { Badge, Button, Callout, Field, Input, NumberInput, ScenarioDot, Select, SourceTag, Switch, useToast } from '../components/ui';
 
-const ICONS: Record<string, typeof Plane> = { plane: Plane, briefcase: Briefcase, store: Store, home: Home, 'trending-up': TrendingUp, 'graduation-cap': GraduationCap, 'map-pin': MapPin, sun: Sun, repeat: Repeat, users: Users, sparkles: Sparkles, landmark: Landmark, 'shopping-bag': ShoppingBag, clock: Clock, award: Award };
+const ICONS: Record<string, typeof Plane> = { plane: Plane, briefcase: Briefcase, store: Store, home: Home, 'trending-up': TrendingUp, 'graduation-cap': GraduationCap, 'map-pin': MapPin, sun: Sun, repeat: Repeat, users: Users, sparkles: Sparkles, landmark: Landmark, 'shopping-bag': ShoppingBag, clock: Clock, award: Award, shield: Shield, globe: Globe, building: Building2, heart: Heart, zap: Zap };
 
-const GROUPS: { label: string; ids: string[] }[] = [
-  { label: 'Career', ids: ['job_change', 'job_offer', 'career_change', 'business'] },
-  { label: 'Financial', ids: ['housing', 'investing', 'debt_payoff', 'major_purchase'] },
-  { label: 'Lifestyle', ids: ['relocation', 'city_move', 'sabbatical', 'working_hours', 'family'] },
-  { label: 'Education', ids: ['education', 'study_path', 'certification'] },
-  { label: 'Other', ids: ['other'] },
-];
+/** A varied set of starting questions shown under the input. */
+const EXAMPLES: DecisionCategory[] = ['relocation', 'military_service', 'job_offer', 'move_in_together', 'remote_work', 'study_abroad', 'housing'];
+
 
 export default function NewDecision() {
   const navigate = useNavigate();
@@ -29,6 +25,7 @@ export default function NewDecision() {
   const [draft, setDraft] = useState<DecisionDraft | null>(null);
   const [busy, setBusy] = useState<'parse' | 'create' | string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState('');
 
   useEffect(() => {
     document.title = 'New decision · What-If';
@@ -138,7 +135,7 @@ export default function NewDecision() {
       )}
 
       <div className="example-chips">
-        {CATEGORIES.filter((c) => c.id !== 'other').slice(0, 6).map((c) => (
+        {EXAMPLES.map((id) => categoryInfo(id)).map((c) => (
           <button key={c.id} type="button" className="example-chip" onClick={() => setQuestion(c.example)}>
             {c.example}
           </button>
@@ -150,11 +147,18 @@ export default function NewDecision() {
           <h2 className="section-title">Or start from a template</h2>
           <span className="meta">Inputs you must supply are marked; defaults are labelled as assumptions</span>
         </div>
-        {GROUPS.map((g) => (
-          <div key={g.label} className="template-group">
+        <div className="search template-search">
+          <Search aria-hidden />
+          <Input type="search" placeholder={`Search ${CATEGORIES.length} templates — e.g. military, wedding, visa`} aria-label="Search templates" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        </div>
+        {CATEGORY_GROUPS.map((g) => ({ g, items: CATEGORIES.filter((c) => c.group === g.id && matches(c, filter)) }))
+          .filter((x) => x.items.length > 0)
+          .map(({ g, items }) => (
+          <div key={g.id} className="template-group">
             <h3>{g.label}</h3>
+            <p className="template-group-desc">{g.description}</p>
             <div className="template-grid">
-              {CATEGORIES.filter((c) => g.ids.includes(c.id)).map((c) => {
+              {items.map((c) => {
                 const Icon = ICONS[c.icon] ?? Sparkles;
                 return (
                   <button key={c.id} type="button" className="template" onClick={() => void fromTemplate(c.id)} disabled={busy !== null}>
@@ -172,6 +176,12 @@ export default function NewDecision() {
       </section>
     </div>
   );
+}
+
+function matches(c: { label: string; description: string; example: string }, q: string): boolean {
+  const t = q.trim().toLowerCase();
+  if (!t) return true;
+  return `${c.label} ${c.description} ${c.example}`.toLowerCase().includes(t);
 }
 
 function missingCount(s: ScenarioDraft) {

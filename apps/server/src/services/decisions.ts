@@ -2,15 +2,17 @@ import { and, asc, count, desc, eq, ilike, inArray, ne, or, sql, type SQL } from
 import type {
   AssumptionDTO,
   CreateDecisionInput,
+  DecisionAccess,
   DecisionDTO,
+  DecisionPeopleDTO,
   DecisionSummaryDTO,
   MilestoneDTO,
   ScenarioDraft,
 } from '@whatif/shared';
 import { exampleDecision, parseSettings } from '@whatif/shared';
 import type { Db } from '../db/client';
-import { assumptions, decisions, journalEntries, milestones, scenarios, simulationResults, simulationRuns } from '../db/schema';
-import { notFound } from '../lib/errors';
+import { assumptions, decisionMembers, decisions, journalEntries, milestones, scenarios, simulationResults, simulationRuns, users } from '../db/schema';
+import { requireDecision, visibleDecisions } from './access';
 import { ensureRun, loadScenariosForDecision, writeModel, type Tx } from './scenarios';
 
 type DecisionRow = typeof decisions.$inferSelect;
@@ -44,10 +46,21 @@ export function assumptionDTO(a: AssumptionRow): AssumptionDTO {
   };
 }
 
-export async function getOwnedDecision(db: Tx, userId: string, id: string): Promise<DecisionRow> {
-  const rows = await db.select().from(decisions).where(and(eq(decisions.id, id), eq(decisions.userId, userId))).limit(1);
-  if (!rows[0]) throw notFound('Decision');
-  return rows[0];
+/** Owner and members of a decision. */
+export async function decisionPeople(db: Tx, decision: Pick<DecisionRow, 'id' | 'userId'>): Promise<DecisionPeopleDTO> {
+  const [owner, members] = await Promise.all([
+    db.select({ id: users.id, name: users.name, email: users.email }).from(users).where(eq(users.id, decision.userId)).limit(1),
+    db
+      .select({ id: users.id, name: users.name, email: users.email, role: decisionMembers.role, addedAt: decisionMembers.createdAt })
+      .from(decisionMembers)
+      .innerJoin(users, eq(users.id, decisionMembers.userId))
+      .where(eq(decisionMembers.decisionId, decision.id))
+      .orderBy(asc(decisionMembers.createdAt)),
+  ]);
+  return {
+    owner: owner[0] ?? { id: decision.userId, name: 'Unknown', email: '' },
+    members: members.map((m) => ({ ...m, addedAt: m.addedAt.toISOString() })),
+  };
 }
 
 export async function touchDecision(db: Tx, id: string): Promise<void> {
@@ -120,14 +133,18 @@ export async function createDecision(db: Db, userId: string, input: CreateDecisi
 }
 
 export async function getDecisionDTO(db: Tx, userId: string, id: string): Promise<DecisionDTO> {
-  const d = await getOwnedDecision(db, userId, id);
-  const [scenarioDtos, ms, as] = await Promise.all([
+  const d = await requireDecision(db, userId, id, 'view');
+  const [scenarioDtos, ms, as, people] = await Promise.all([
     loadScenariosForDecision(db, id),
     db.select().from(milestones).where(eq(milestones.decisionId, id)).orderBy(asc(milestones.date)),
     db.select().from(assumptions).where(eq(assumptions.decisionId, id)).orderBy(asc(assumptions.createdAt)),
+    decisionPeople(db, d),
   ]);
   return {
     id: d.id,
+    access: d.access,
+    sharedBy: d.access === 'owner' ? null : people.owner.name,
+    people,
     title: d.title,
     question: d.question,
     description: d.description,
@@ -157,12 +174,16 @@ export interface ListOptions {
   status: string;
   category?: string | undefined;
   sort: 'updated' | 'created' | 'title';
+  /** all (default), only my own decisions, or only those shared with me. */
+  shared?: 'all' | 'mine' | 'with_me' | undefined;
   page: number;
   pageSize: number;
 }
 
 export async function listDecisionSummaries(db: Db, userId: string, opts: ListOptions): Promise<{ items: DecisionSummaryDTO[]; total: number }> {
-  const conds: SQL[] = [eq(decisions.userId, userId)];
+  const conds: SQL[] = [visibleDecisions(db, userId)];
+  if (opts.shared === 'mine') conds.push(eq(decisions.userId, userId));
+  else if (opts.shared === 'with_me') conds.push(ne(decisions.userId, userId));
   if (opts.status === 'active') conds.push(ne(decisions.status, 'archived'));
   else if (opts.status !== 'all') conds.push(eq(decisions.status, opts.status));
   if (opts.category) conds.push(eq(decisions.category, opts.category));
@@ -182,13 +203,18 @@ export async function listDecisionSummaries(db: Db, userId: string, opts: ListOp
       .offset((opts.page - 1) * opts.pageSize),
     db.select({ n: count() }).from(decisions).where(where),
   ]);
-  return { items: await summarize(db, rows), total: Number(totalRows[0]?.n ?? 0) };
+  return { items: await summarize(db, rows, userId), total: Number(totalRows[0]?.n ?? 0) };
 }
 
 /** Builds list summaries including each scenario's latest stored expected outcome. */
-export async function summarize(db: Db, rows: DecisionRow[]): Promise<DecisionSummaryDTO[]> {
+export async function summarize(db: Db, rows: DecisionRow[], userId: string): Promise<DecisionSummaryDTO[]> {
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
+  const [memberRows, ownerRows] = await Promise.all([
+    db.select({ decisionId: decisionMembers.decisionId, userId: decisionMembers.userId, role: decisionMembers.role }).from(decisionMembers).where(inArray(decisionMembers.decisionId, ids)),
+    db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, [...new Set(rows.map((r) => r.userId))])),
+  ]);
+  const accessOf = (d: DecisionRow): DecisionAccess => (d.userId === userId ? 'owner' : (memberRows.find((m) => m.decisionId === d.id && m.userId === userId)?.role ?? 'viewer'));
   const scen = await db
     .select({
       id: scenarios.id,
@@ -229,6 +255,9 @@ export async function summarize(db: Db, rows: DecisionRow[]): Promise<DecisionSu
       baseCurrency: d.baseCurrency,
       isExample: d.isExample,
       scenarioCount: own.length,
+      access: accessOf(d),
+      sharedBy: d.userId === userId ? null : (ownerRows.find((o) => o.id === d.userId)?.name ?? null),
+      memberCount: memberRows.filter((m) => m.decisionId === d.id).length,
       chosenScenarioId: d.chosenScenarioId,
       createdAt: d.createdAt.toISOString(),
       updatedAt: d.updatedAt.toISOString(),

@@ -39,6 +39,12 @@ export interface DecisionDraft {
 }
 
 const CATEGORY_RULES: { category: DecisionCategory; patterns: RegExp[]; weight: number }[] = [
+  { category: 'military_service', weight: 4, patterns: [/\b(military|national|army) service\b/, /\bservice (militaire|national)\b/, /\b(conscription|sursis|dispense)\b/, /\bexempt(ion|ed)? from (the )?(military |national |army )?service\b/] },
+  { category: 'study_abroad', weight: 4, patterns: [/\bstudy(ing)? abroad\b/, /\bstudent visa\b/] },
+  { category: 'remote_work', weight: 4, patterns: [/\b(remote|remotely)\b.*\b(work|job|clients?)\b/, /\b(freelanc\w*|upwork|fiverr)\b.*\b(foreign|abroad|clients? (in|from)|europe|usa)\b/, /\bwork(ing)? remotely\b/] },
+  { category: 'public_private', weight: 4, patterns: [/\b(public|government|state) (sector|job)\b/, /\bprivate sector\b/, /\b(fonction publique|civil servant)\b/] },
+  { category: 'move_in_together', weight: 4, patterns: [/\bmove in together\b/, /\b(moving|live|living) together\b/, /\b(get(ting)? married|marry|wedding)\b/] },
+  { category: 'side_income', weight: 3, patterns: [/\bside (project|hustle|business|income|gig)\b/, /\b(second job|extra income)\b/] },
   { category: 'housing', weight: 3, patterns: [/\bbuy(ing)?\b.*\b(house|home|flat|apartment|property|condo)\b/, /\b(mortgage|instead of renting|rent or buy|buy or rent)\b/] },
   { category: 'investing', weight: 3, patterns: [/\binvest(ing|ment)?\b/, /\b(etf|index fund|stocks|portfolio)\b/] },
   { category: 'business', weight: 3, patterns: [/\b(start|launch|open|found)(ing)?\b.*\b(business|company|startup|start-up|shop|agency|consultancy|consulting|restaurant|venture|freelanc\w*)\b/, /\bgo(ing)? freelance\b/, /\bself[- ]employed\b/] },
@@ -173,6 +179,10 @@ export function classify(text: string): { category: DecisionCategory; confidence
       else scores.set('relocation', (scores.get('relocation') ?? 0) + 4);
     }
   }
+  // A named place plus study words means studying there, not moving for work.
+  if (places.length > 0 && /\b(study|studies|studying|masters?|degree|university|phd)\b/.test(lower)) scores.set('study_abroad', (scores.get('study_abroad') ?? 0) + 5);
+  // Remote work for clients elsewhere means staying put: places name the clients, not a move.
+  if (scores.has('remote_work')) scores.set('remote_work', (scores.get('remote_work') ?? 0) + (scores.get('relocation') ?? 0));
   if (/\b(another|new|different) city\b|\bcity\b.*\bmove\b/.test(lower)) scores.set('city_move', (scores.get('city_move') ?? 0) + 3);
   // The career rule catches "become a …" which also appears in relocation questions ("work as …").
   if (scores.has('relocation') && /\bas an?\b/.test(lower)) scores.set('career_change', Math.max(0, (scores.get('career_change') ?? 0) - 2));

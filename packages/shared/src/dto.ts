@@ -34,6 +34,36 @@ export interface DecisionSummaryDTO {
   updatedAt: string;
   /** Scenario names with their latest expected final net worth, in base currency where convertible. */
   preview: { id: string; name: string; colorIndex: number; isBaseline: boolean; finalNetWorth: number | null; currency: string }[];
+  /** What the current user may do: their own decision, or one shared with them. */
+  access: DecisionAccess;
+  /** The owner's name when the decision is shared with the current user; null for their own. */
+  sharedBy: string | null;
+  /** How many other people can open this decision. */
+  memberCount: number;
+}
+
+export type DecisionAccess = 'owner' | 'editor' | 'viewer';
+
+export interface PersonDTO {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export interface DecisionMemberDTO extends PersonDTO {
+  role: 'editor' | 'viewer';
+  addedAt: string;
+}
+
+export interface DecisionPeopleDTO {
+  owner: PersonDTO;
+  members: DecisionMemberDTO[];
+}
+
+export interface AdminUserDTO extends UserDTO {
+  lastLoginAt: string | null;
+  decisions: number;
+  locked: boolean;
 }
 
 export interface AssumptionDTO {
@@ -99,7 +129,9 @@ export interface MilestoneDTO {
   createdAt: string;
 }
 
-export interface DecisionDTO extends Omit<DecisionSummaryDTO, 'preview' | 'scenarioCount'> {
+export interface DecisionDTO extends Omit<DecisionSummaryDTO, 'preview' | 'scenarioCount' | 'memberCount'> {
+  /** Owner and everyone the decision is shared with. */
+  people: DecisionPeopleDTO;
   description: string | null;
   priorities: PriorityWeights | null;
   settings: DecisionSettings;
@@ -272,6 +304,8 @@ export interface ExperimentDTO {
   variant: ExperimentMetrics;
   currency: string;
   engineVersion: string;
+  /** Name of the person who ran it (decisions can be shared). */
+  createdBy: string | null;
   createdAt: string;
 }
 
@@ -294,6 +328,8 @@ export interface EvidenceDTO {
   uncertainty: string | null;
   note: string | null;
   origin: string;
+  /** Name of the person who added it. */
+  createdBy: string | null;
   createdAt: string;
 }
 

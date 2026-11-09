@@ -147,6 +147,36 @@ const HIDDEN_COSTS: Partial<Record<DecisionCategory, { label: string; match: Reg
     { label: 'Fund and platform fees', match: /fee|cost|platform/i },
     { label: 'Taxes on investment gains', match: /tax/i },
   ],
+  military_service: [
+    { label: 'Jobs, passports or visas closed until your status is settled', match: /status|exempt|passport|visa|job/i },
+    { label: 'Income lost while serving', match: /service|gap|allowance/i },
+    { label: 'Paperwork and travel to obtain documents', match: /paper|document|admin|travel/i },
+  ],
+  study_abroad: [
+    { label: 'Proof of funds or blocked account before the visa', match: /proof|blocked|fund|visa/i },
+    { label: 'Health insurance as a student', match: /insurance|health/i },
+    { label: 'Translation and recognition of your diplomas', match: /translat|recogni|diploma|equivalen/i },
+    { label: 'Trips home', match: /trip|flight|visit|home/i },
+  ],
+  remote_work: [
+    { label: 'Fees and exchange losses when getting paid from abroad', match: /fee|transfer|exchange|platform/i },
+    { label: 'Reliable internet and backup power', match: /internet|power|backup|setup|laptop/i },
+    { label: 'Health insurance and pension you now pay yourself', match: /insurance|pension|social/i },
+    { label: 'Months between clients', match: /client|gap|lost/i },
+  ],
+  public_private: [
+    { label: 'Benefits only one job offers (housing, pension, bonuses)', match: /benefit|housing|pension|bonus/i },
+    { label: 'Undeclared salary or missing social contributions', match: /declar|social|contribut|contract/i },
+  ],
+  move_in_together: [
+    { label: 'Deposit and overlapping rent while you move', match: /deposit|overlap|moving/i },
+    { label: 'Furniture and household setup', match: /furni|setup|household/i },
+    { label: 'Wedding and family celebrations', match: /wedding|celebrat|gift|family/i },
+  ],
+  side_income: [
+    { label: 'Taxes and registration for the side income', match: /tax|regist|declar/i },
+    { label: 'Tools, ads and platform fees', match: /tool|ads|fee|platform|running/i },
+  ],
 };
 
 const SOURCE_WEIGHT: Record<string, number> = { missing: 3, system: 2, ai: 2, external: 1, user: 0.5 };

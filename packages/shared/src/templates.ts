@@ -38,32 +38,51 @@ export interface DraftContext {
   baseCurrency?: string;
 }
 
+export type CategoryGroup = 'career' | 'money' | 'life' | 'learning' | 'obligations' | 'other';
+
 export interface CategoryInfo {
   id: DecisionCategory;
   label: string;
   description: string;
   example: string;
   icon: string;
+  group: CategoryGroup;
 }
 
+/** Template library sections, in display order. */
+export const CATEGORY_GROUPS: { id: CategoryGroup; label: string; description: string }[] = [
+  { id: 'career', label: 'Work & career', description: 'Jobs, offers, your own business and how you earn.' },
+  { id: 'money', label: 'Money', description: 'Buying, saving, investing and debt.' },
+  { id: 'life', label: 'Life & home', description: 'Where you live, who you live with, and your time.' },
+  { id: 'learning', label: 'Studies & skills', description: 'Degrees, courses and certifications.' },
+  { id: 'obligations', label: 'Papers & obligations', description: 'Obligations like military service that block or unlock other options.' },
+  { id: 'other', label: 'Something else', description: 'A blank comparison of two paths.' },
+];
+
 export const CATEGORIES: CategoryInfo[] = [
-  { id: 'relocation', label: 'Move abroad', description: 'Compare staying with relocating to another country.', example: 'What if I move from Algeria to Germany and work as a network engineer?', icon: 'plane' },
-  { id: 'job_change', label: 'Leave my job', description: 'Weigh your current role against a new one or a break.', example: 'What if I leave my current job for a better-paid role?', icon: 'briefcase' },
-  { id: 'business', label: 'Start a business', description: 'Model the runway, setup costs and ramp-up of your own venture.', example: 'What if I start my own consulting business?', icon: 'store' },
-  { id: 'housing', label: 'Buy or rent', description: 'Compare buying a home with continuing to rent.', example: 'What if I buy a house instead of renting?', icon: 'home' },
-  { id: 'investing', label: 'Invest monthly', description: 'See what a regular investment habit could add up to.', example: 'What if I invest 500 every month?', icon: 'trending-up' },
-  { id: 'education', label: 'Learn a skill', description: 'Spend time and money on training for a future uplift.', example: 'What if I spend one year learning data engineering?', icon: 'graduation-cap' },
-  { id: 'city_move', label: 'Move city', description: 'Relocate within your country for work or lifestyle.', example: 'What if I relocate from Lyon to Paris?', icon: 'map-pin' },
-  { id: 'sabbatical', label: 'Take time off', description: 'Plan a sabbatical and your return to work.', example: 'What if I take a year off to travel?', icon: 'sun' },
-  { id: 'career_change', label: 'Change career', description: 'Retrain and switch to a different profession.', example: 'What if I change my career to become a UX designer?', icon: 'repeat' },
-  { id: 'family', label: 'Start a family', description: 'Understand the costs and time of having children.', example: 'What if we start a family in the next two years?', icon: 'users' },
-  { id: 'job_offer', label: 'Accept a job offer', description: 'Compare an offer with staying, including notice and commute.', example: 'What if I accept the job offer at 65k?', icon: 'briefcase' },
-  { id: 'debt_payoff', label: 'Pay off debt', description: 'Minimum payments, paying off faster, or investing instead.', example: 'What if I pay off my student loan faster?', icon: 'landmark' },
-  { id: 'major_purchase', label: 'Major purchase', description: 'Buy now, finance it, or wait and save.', example: 'What if I buy a new car?', icon: 'shopping-bag' },
-  { id: 'working_hours', label: 'Change working hours', description: 'Part-time or a four-day week: less pay, more time.', example: 'What if I work a four-day week?', icon: 'clock' },
-  { id: 'study_path', label: 'University or self-study', description: 'Full-time study versus learning while you work.', example: 'What if I do a degree full-time instead of self-study?', icon: 'graduation-cap' },
-  { id: 'certification', label: 'Professional certification', description: 'Fees and study time now, a higher salary later.', example: 'What if I get my CCNP certification?', icon: 'award' },
-  { id: 'other', label: 'Something else', description: 'Start from a blank comparison of two paths.', example: 'What if I…', icon: 'sparkles' },
+  { id: 'relocation', label: 'Move abroad', description: 'Compare staying with relocating to another country.', example: 'What if I move from Algeria to Germany and work as a network engineer?', icon: 'plane', group: 'life' },
+  { id: 'job_change', label: 'Leave my job', description: 'Weigh your current role against a new one or a break.', example: 'What if I leave my current job for a better-paid role?', icon: 'briefcase', group: 'career' },
+  { id: 'business', label: 'Start a business', description: 'Model the runway, setup costs and ramp-up of your own venture.', example: 'What if I start my own consulting business?', icon: 'store', group: 'career' },
+  { id: 'housing', label: 'Buy or rent', description: 'Compare buying a home with continuing to rent.', example: 'What if I buy a house instead of renting?', icon: 'home', group: 'money' },
+  { id: 'investing', label: 'Invest monthly', description: 'See what a regular investment habit could add up to.', example: 'What if I invest 500 every month?', icon: 'trending-up', group: 'money' },
+  { id: 'education', label: 'Learn a skill', description: 'Spend time and money on training for a future uplift.', example: 'What if I spend one year learning data engineering?', icon: 'graduation-cap', group: 'learning' },
+  { id: 'city_move', label: 'Move city', description: 'Relocate within your country for work or lifestyle.', example: 'What if I relocate from Lyon to Paris?', icon: 'map-pin', group: 'life' },
+  { id: 'sabbatical', label: 'Take time off', description: 'Plan a sabbatical and your return to work.', example: 'What if I take a year off to travel?', icon: 'sun', group: 'life' },
+  { id: 'career_change', label: 'Change career', description: 'Retrain and switch to a different profession.', example: 'What if I change my career to become a UX designer?', icon: 'repeat', group: 'career' },
+  { id: 'family', label: 'Start a family', description: 'Understand the costs and time of having children.', example: 'What if we start a family in the next two years?', icon: 'users', group: 'life' },
+  { id: 'job_offer', label: 'Accept a job offer', description: 'Compare an offer with staying, including notice and commute.', example: 'What if I accept the job offer at 65k?', icon: 'briefcase', group: 'career' },
+  { id: 'debt_payoff', label: 'Pay off debt', description: 'Minimum payments, paying off faster, or investing instead.', example: 'What if I pay off my student loan faster?', icon: 'landmark', group: 'money' },
+  { id: 'major_purchase', label: 'Major purchase', description: 'Buy now, finance it, or wait and save.', example: 'What if I buy a new car?', icon: 'shopping-bag', group: 'money' },
+  { id: 'working_hours', label: 'Change working hours', description: 'Part-time or a four-day week: less pay, more time.', example: 'What if I work a four-day week?', icon: 'clock', group: 'career' },
+  { id: 'study_path', label: 'University or self-study', description: 'Full-time study versus learning while you work.', example: 'What if I do a degree full-time instead of self-study?', icon: 'graduation-cap', group: 'learning' },
+  { id: 'certification', label: 'Professional certification', description: 'Fees and study time now, a higher salary later.', example: 'What if I get my CCNP certification?', icon: 'award', group: 'learning' },
+  { id: 'military_service', label: 'Military service', description: 'Serve now, defer while studying, or wait for an exemption — and what each does to jobs and travel.', example: 'What if I do my military service now instead of waiting for an exemption?', icon: 'shield', group: 'obligations' },
+  { id: 'study_abroad', label: 'Study abroad', description: 'Tuition, visa and living costs abroad against a degree and job at home.', example: 'What if I do a master’s in France?', icon: 'plane', group: 'learning' },
+  { id: 'remote_work', label: 'Work remotely for foreign clients', description: 'Freelance or remote work paid in foreign currency, from home.', example: 'What if I freelance for clients in Europe while living in Algiers?', icon: 'globe', group: 'career' },
+  { id: 'public_private', label: 'Public or private sector', description: 'A stable public job against a better-paid but riskier private one.', example: 'What if I take the public sector job instead of the private one?', icon: 'building', group: 'career' },
+  { id: 'move_in_together', label: 'Move in together or marry', description: 'Shared rent and costs, a wedding, and what changes for both of you.', example: 'What if we move in together next year?', icon: 'heart', group: 'life' },
+  { id: 'side_income', label: 'Start a side project', description: 'Extra income on top of your job, paid for with evenings and weekends.', example: 'What if I start a side business selling online?', icon: 'zap', group: 'money' },
+  { id: 'other', label: 'Something else', description: 'Start from a blank comparison of two paths.', example: 'What if I…', icon: 'sparkles', group: 'other' },
 ];
 
 export function categoryInfo(id: DecisionCategory): CategoryInfo {
@@ -543,6 +562,220 @@ export function buildFromTemplate(category: DecisionCategory, ctx: DraftContext,
               flow({ kind: 'salary_change', label: 'Salary with certification', amount: null, startMonth: months + 3, note: 'Expected salary once certified — needs your input' }),
             ],
             assumptions: [{ text: 'A salary increase is not guaranteed; look at job offers that require the certification.', category: 'risk', source: 'system' }],
+          },
+        ],
+      };
+    }
+    case 'military_service': {
+      const service = e.durationMonths ?? 12;
+      const study = 24;
+      const servicePaths: ScenarioSeed['assumptions'] = [
+        { text: 'Service length, allowance and exemption rules differ by country and change over time — check the current official rules.', category: 'question', source: 'system' },
+      ];
+      return {
+        title: 'Military service: serve now, defer, or wait for an exemption?',
+        scenarios: [
+          {
+            ...statusQuo(ctx, 'Wait for an exemption', 'Keep working or studying without serving, and wait for a deferral, an exemption or a regularisation measure.'),
+            variables: {
+              ...systemDefaults(),
+              ...fromBaseline(ctx.baseline),
+              jobLossProbability: val(10, 'system', 'Higher than usual: without a settled service status some employers will not hire or keep you — adjust'),
+              unemploymentMonths: val(6, 'system', 'Time to find work again when a job falls through — adjust'),
+            },
+            assumptions: [
+              { text: 'Without a settled service status, some jobs, a passport or a visa may be out of reach.', category: 'risk', source: 'system' },
+              { text: 'An exemption or regularisation may come — or may not. You cannot plan its timing.', category: 'risk', source: 'system' },
+              ...servicePaths,
+            ],
+          },
+          {
+            name: `Serve now (${monthsLabel(service)})`,
+            description: 'Do the service now, then look for work with your status settled.',
+            variables: {
+              ...systemDefaults(),
+              ...fromBaseline(ctx.baseline),
+              jobLossProbability: val(3, 'system', 'Settled status: fewer doors closed — adjust'),
+            },
+            flows: [
+              flow({ kind: 'income_gap', label: 'Military service', amount: 0, startMonth: 0, endMonth: service, note: 'No regular salary while serving' }),
+              flow({ kind: 'income', label: 'Service allowance', amount: null, startMonth: 0, endMonth: service, annualGrowth: 0, note: 'Monthly allowance during service, if any — needs your input' }),
+              flow({ kind: 'income', label: 'Living costs covered while serving', amount: null, startMonth: 0, endMonth: service, annualGrowth: 0, note: 'Monthly food and housing you no longer pay yourself — needs your input' }),
+              flow({ kind: 'time', label: 'Service', amount: 50, startMonth: 0, endMonth: service, source: 'system', note: 'Assumed hours per week away from your own plans — adjust' }),
+              flow({ kind: 'salary_change', label: 'Salary after service', amount: e.annualSalary ?? null, startMonth: service + 3, note: 'Expected gross salary once your status is settled — needs your input' }),
+            ],
+            assumptions: [
+              { text: 'A settled status opens jobs that ask for it, and makes passports and visas easier.', category: 'opportunity', source: 'system' },
+              { text: 'You find work about three months after the service ends.', category: 'assumption', source: 'system' },
+              ...servicePaths,
+            ],
+          },
+          {
+            name: 'Defer, finish studies, then serve',
+            description: 'Use a study deferral, graduate, then serve — sometimes in a role that matches your degree.',
+            variables: { ...systemDefaults(), ...fromBaseline(ctx.baseline) },
+            flows: [
+              flow({ kind: 'expense', label: 'Study costs', amount: null, startMonth: 0, endMonth: study, annualGrowth: 0, note: 'Monthly fees, books and transport — needs your input' }),
+              flow({ kind: 'time', label: 'Study time', amount: 30, startMonth: 0, endMonth: study, source: 'system', note: 'Assumed hours per week — adjust' }),
+              flow({ kind: 'income_gap', label: 'Military service', amount: 0, startMonth: study, endMonth: study + service, note: 'No regular salary while serving' }),
+              flow({ kind: 'income', label: 'Service allowance', amount: null, startMonth: study, endMonth: study + service, annualGrowth: 0, note: 'Monthly allowance during service, if any — needs your input' }),
+              flow({ kind: 'salary_change', label: 'Graduate salary after service', amount: null, startMonth: study + service + 3, note: 'Expected gross salary with the degree — needs your input' }),
+            ],
+            assumptions: [{ text: 'Deferrals usually have an age limit and require proof that you are enrolled.', category: 'question', source: 'system' }, ...servicePaths],
+          },
+        ],
+      };
+    }
+    case 'study_abroad': {
+      const dest = e.destinations?.[0] ?? { label: 'abroad', currency: null };
+      const months = e.durationMonths ?? 24;
+      const where = dest.label === 'abroad' ? 'abroad' : `in ${dest.label}`;
+      return {
+        title: `Study ${where}?`,
+        scenarios: [
+          statusQuo(ctx, `Stay${hereLabel}`, 'Keep working or studying where you are.'),
+          {
+            name: `Study ${where}`,
+            description: `A ${monthsLabel(months)} programme ${where}, with a part-time student job, then a first job there.`,
+            currency: dest.currency,
+            variables: {
+              ...systemDefaults(),
+              startingCash: fromBaseline(ctx.baseline).startingCash ?? val(null, 'user', NEEDS_INPUT),
+              grossAnnualIncome: val(e.annualSalary ?? null, 'user', 'Graduate salary in the destination — needs your input'),
+              effectiveTaxRate: val(null, 'user', 'Tax and social contributions in the destination'),
+              housingCostMonthly: val(null, 'user', 'Student rent in the destination city'),
+              livingCostMonthly: val(null, 'user', 'Other monthly living costs in the destination'),
+              incomeStartMonth: val(months + 4, 'system', 'Graduation plus a job search — adjust', months + 2, months + 10),
+              employmentProbability: val(70, 'system', 'Assumed chance of finding a graduate job there on time — adjust'),
+              extendedSearchMonths: val(6, 'system', 'Extra months if the first search fails'),
+            },
+            flows: [
+              flow({ kind: 'one_time_expense', label: 'Visa, flights and first deposit', amount: e.oneTimeAmount ?? null, startMonth: 0, note: 'Needs your input' }),
+              flow({ kind: 'expense', label: 'Tuition', amount: null, startMonth: 0, endMonth: months, annualGrowth: 0, note: 'Monthly tuition (0 if the programme is free) — needs your input' }),
+              flow({ kind: 'income', label: 'Part-time student job', amount: null, startMonth: 2, endMonth: months, annualGrowth: 0, note: 'Net monthly pay; student visas often cap working hours' }),
+              flow({ kind: 'time', label: 'Study time', amount: 35, startMonth: 0, endMonth: months, source: 'system', note: 'Assumed hours per week — adjust' }),
+            ],
+            assumptions: [
+              { text: 'Many student visas require proof of funds (e.g. a blocked account) before you leave.', category: 'question', source: 'system' },
+              { text: 'You can stay and work after graduating — check the post-study work rules.', category: 'assumption', source: 'system' },
+              { text: 'Exchange rates, especially if you rely on money sent from home, may move a lot.', category: 'risk', source: 'system' },
+            ],
+          },
+        ],
+      };
+    }
+    case 'remote_work': {
+      return {
+        title: 'Work remotely for foreign clients?',
+        scenarios: [
+          statusQuo(ctx, 'Keep my local job', 'Stay employed locally and paid in your own currency.'),
+          {
+            name: 'Go remote / freelance',
+            description: 'Leave the local job and work for clients abroad from home.',
+            variables: {
+              ...systemDefaults(),
+              ...fromBaseline(ctx.baseline),
+              grossAnnualIncome: val(0, 'user', 'Client income is modelled as a separate item below'),
+              jobLossProbability: val(15, 'system', 'Chance per year of losing your main client — adjust'),
+              unemploymentMonths: val(3, 'system', 'Time to replace a lost client — adjust'),
+            },
+            flows: [
+              flow({ kind: 'one_time_expense', label: 'Laptop, internet and setup', amount: e.oneTimeAmount ?? null, startMonth: 0, note: 'Needs your input' }),
+              flow({ kind: 'income', label: 'Client income (first months)', amount: null, startMonth: 1, endMonth: 6, annualGrowth: 0, note: 'Monthly net income while you build a client base, in your currency at the rate you actually get' }),
+              flow({ kind: 'income', label: 'Client income (established)', amount: e.monthlyAmount ?? null, startMonth: 6, annualGrowth: 5, note: 'Monthly net income once established — needs your input' }),
+              flow({ kind: 'expense', label: 'Platform, transfer and exchange fees', amount: null, startMonth: 1, note: 'Monthly cost of getting paid from abroad — needs your input' }),
+            ],
+            assumptions: [
+              { text: 'Receiving foreign payments can be slow or costly; the rate you get may differ from the official one.', category: 'risk', source: 'system' },
+              { text: 'No paid holidays, sick pay or employer pension.', category: 'risk', source: 'system' },
+              { text: 'Earning in a stronger currency protects you if your local currency weakens.', category: 'opportunity', source: 'system' },
+            ],
+          },
+        ],
+      };
+    }
+    case 'public_private': {
+      return {
+        title: 'Public sector or private sector?',
+        scenarios: [
+          {
+            name: 'Public sector job',
+            description: 'Lower pay and slower raises, but very stable.',
+            isBaseline: true,
+            currency: ctx.baseline?.currency ?? null,
+            variables: {
+              ...systemDefaults(),
+              ...fromBaseline(ctx.baseline),
+              grossAnnualIncome: val(null, 'user', 'Gross salary in the public job — needs your input'),
+              incomeGrowthRate: val(2, 'system', 'Slow, predictable raises — adjust', 1, 3),
+              jobLossProbability: val(1, 'system', 'Public jobs are rarely lost — adjust'),
+            },
+            assumptions: [{ text: 'Public jobs often come with housing, pension or family benefits — add them if they apply.', category: 'question', source: 'system' }],
+          },
+          {
+            name: 'Private sector job',
+            description: 'Higher pay and faster raises, with a real chance of losing the job.',
+            variables: {
+              ...systemDefaults(),
+              ...fromBaseline(ctx.baseline),
+              grossAnnualIncome: val(e.annualSalary ?? null, 'user', 'Gross salary in the private job — needs your input'),
+              incomeGrowthRate: val(4, 'system', 'Faster raises when you perform — adjust', 0, 8),
+              jobLossProbability: val(8, 'system', 'Chance per year of losing the job — adjust'),
+              unemploymentMonths: val(5, 'system', 'Months to find a new job — adjust'),
+            },
+            assumptions: [{ text: 'Private employers may pay part of the salary informally or skip social contributions — check the contract.', category: 'risk', source: 'system' }],
+          },
+        ],
+      };
+    }
+    case 'move_in_together': {
+      const when = e.delayMonths ?? 6;
+      return {
+        title: 'Move in together?',
+        scenarios: [
+          statusQuo(ctx, 'Keep separate homes', 'Each of you keeps your own place for now.'),
+          {
+            name: `Move in together in ${monthsLabel(when)}`,
+            description: 'Share a home and split rent and living costs. Model your own share here.',
+            variables: { ...systemDefaults(), ...fromBaseline(ctx.baseline) },
+            flows: [
+              flow({ kind: 'one_time_expense', label: 'Moving and furniture (your share)', amount: null, startMonth: when, note: 'Needs your input' }),
+              flow({ kind: 'expense', label: 'Your share of the new rent', amount: null, startMonth: when, note: 'Monthly — needs your input. Set your current rent to stop at the same time below.' }),
+              flow({ kind: 'income', label: 'Current rent you stop paying', amount: ctx.baseline?.monthlyHousingCost ?? null, startMonth: when, annualGrowth: 0, note: ctx.baseline?.monthlyHousingCost ? FROM_BASELINE : 'Your current monthly rent — needs your input' }),
+            ],
+            assumptions: [{ text: 'Shared costs are split as agreed; write down who pays what.', category: 'assumption', source: 'system' }],
+          },
+          {
+            name: 'Get married, then move in',
+            description: 'A wedding first, then a shared home.',
+            variables: { ...systemDefaults(), ...fromBaseline(ctx.baseline) },
+            flows: [
+              flow({ kind: 'one_time_expense', label: 'Wedding, gifts and celebrations (your share)', amount: e.oneTimeAmount ?? null, startMonth: when + 6, note: 'Needs your input' }),
+              flow({ kind: 'one_time_expense', label: 'Furnishing the home (your share)', amount: null, startMonth: when + 6, note: 'Needs your input' }),
+              flow({ kind: 'expense', label: 'Your share of the new rent', amount: null, startMonth: when + 6, note: 'Monthly — needs your input' }),
+              flow({ kind: 'income', label: 'Current rent you stop paying', amount: ctx.baseline?.monthlyHousingCost ?? null, startMonth: when + 6, annualGrowth: 0, note: ctx.baseline?.monthlyHousingCost ? FROM_BASELINE : 'Your current monthly rent — needs your input' }),
+            ],
+            assumptions: [{ text: 'Each partner can open this decision with their own numbers — share it from the decision menu.', category: 'assumption', source: 'system' }],
+          },
+        ],
+      };
+    }
+    case 'side_income': {
+      return {
+        title: 'Start a side project?',
+        scenarios: [
+          statusQuo(ctx, 'No side project', 'Keep your evenings and weekends free.'),
+          {
+            name: 'Start the side project',
+            description: 'Keep your job and build extra income in your free time.',
+            variables: { ...systemDefaults(), ...fromBaseline(ctx.baseline) },
+            flows: [
+              flow({ kind: 'one_time_expense', label: 'Setup costs', amount: e.oneTimeAmount ?? null, startMonth: 0, note: 'Stock, tools, website — needs your input' }),
+              flow({ kind: 'income', label: 'Side income', amount: e.monthlyAmount ?? null, startMonth: 3, annualGrowth: 10, note: 'Net monthly profit once it starts — needs your input' }),
+              flow({ kind: 'expense', label: 'Running costs', amount: null, startMonth: 0, note: 'Monthly fees, ads, materials — needs your input' }),
+              flow({ kind: 'time', label: 'Evenings and weekends', amount: 10, startMonth: 0, source: 'system', note: 'Assumed hours per week — adjust' }),
+            ],
+            assumptions: [{ text: 'Most side projects earn little in the first months.', category: 'risk', source: 'system' }],
           },
         ],
       };

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { ADMIN, MEMBER } from './fixtures';
+import { ADMIN, MEMBER, PARTNER } from './fixtures';
 
 /**
  * Critical user journeys, run in order against one fresh instance:
@@ -254,6 +254,40 @@ test('another user cannot open someone else’s decision', async ({ browser }) =
   await other.goto(decisionUrl);
   await expect(other.getByText('We couldn’t load this')).toBeVisible();
   await expect(other.getByText('Decision not found.')).toBeVisible();
+  await ctx.close();
+});
+
+test('the administrator creates an account and shares a decision with it', async ({ browser }) => {
+  await page.goto('/settings/people');
+  await page.getByRole('button', { name: 'Add a person' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Name').fill(PARTNER.name);
+  await dialog.getByLabel('Email').fill(PARTNER.email);
+  await dialog.getByLabel('Temporary password').fill(PARTNER.password);
+  await dialog.getByRole('button', { name: 'Create account' }).click();
+  await expect(dialog.getByText(`${PARTNER.name} can sign in now`)).toBeVisible();
+  await dialog.getByRole('button', { name: 'Done' }).click();
+  await expect(page.locator('.table')).toContainText(PARTNER.email);
+
+  await page.goto(decisionUrl);
+  await page.getByRole('button', { name: 'Share' }).click();
+  const share = page.getByRole('dialog');
+  await share.getByLabel('Person').selectOption({ label: `${PARTNER.name} (${PARTNER.email})` });
+  await share.getByRole('button', { name: 'Share', exact: true }).click();
+  await expect(share.locator('.people-list')).toContainText(PARTNER.name);
+  await share.getByRole('button', { name: 'Done' }).click();
+
+  const ctx = await browser.newContext();
+  const partner = await ctx.newPage();
+  await partner.goto('/signin');
+  await partner.getByLabel('Email').fill(PARTNER.email);
+  await partner.getByLabel('Password').fill(PARTNER.password);
+  await partner.getByRole('button', { name: 'Sign in' }).click();
+  await expect(partner).toHaveURL('/');
+  await partner.goto('/decisions');
+  await expect(partner.locator('.list')).toContainText(`Shared by ${ADMIN.name}`);
+  await partner.locator('.list a').first().click();
+  await expect(partner.getByText(`${ADMIN.name} shared this decision with you.`)).toBeVisible();
   await ctx.close();
 });
 

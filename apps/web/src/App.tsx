@@ -14,6 +14,7 @@ const Journal = lazy(() => import('./pages/Journal'));
 const Report = lazy(() => import('./pages/Report'));
 const Settings = lazy(() => import('./pages/settings/Settings'));
 const NotFound = lazy(() => import('./pages/NotFound'));
+const Help = lazy(() => import('./pages/Help'));
 
 function FullPageSpinner() {
   return (
@@ -62,6 +63,7 @@ export function App() {
           <Route path="decisions/new" element={<NewDecision />} />
           <Route path="decisions/:id" element={<Workspace />} />
           <Route path="journal" element={<Journal />} />
+          <Route path="help" element={<Help />} />
           <Route path="settings" element={<Navigate to="/settings/profile" replace />} />
           <Route path="settings/:section" element={<Settings />} />
           <Route path="*" element={<NotFound />} />

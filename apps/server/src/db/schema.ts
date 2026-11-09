@@ -395,3 +395,18 @@ export const aiMessages = pgTable(
   },
   (t) => [index('ai_messages_decision_idx').on(t.decisionId, t.createdAt)],
 );
+
+// ── v2.1: shared decisions ──────────────────────────────────────────────────
+
+/** People other than the owner who can open a decision. Editors can change it; viewers can only read. */
+export const decisionMembers = pgTable(
+  'decision_members',
+  {
+    decisionId: uuid('decision_id').notNull().references(() => decisions.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role', { enum: ['editor', 'viewer'] }).notNull().default('editor'),
+    addedBy: uuid('added_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('decision_members_key').on(t.decisionId, t.userId), index('decision_members_user_idx').on(t.userId)],
+);

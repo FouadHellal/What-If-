@@ -7,6 +7,7 @@ import type { Db } from '../db/client';
 import { decisions, journalEntries, scenarios, simulationResults } from '../db/schema';
 import { badRequest, notFound, parse } from '../lib/errors';
 import { requireUser } from '../http/auth';
+import { decisionAccess } from '../services/access';
 
 type Row = typeof journalEntries.$inferSelect;
 
@@ -30,8 +31,7 @@ export function journalDTO(r: Row, decisionTitle: string | null): JournalEntryDT
 /** Looks up what the pinned (decided) run projected for the month of a check-in, in base currency. */
 async function projectedFor(db: Db, userId: string, decisionId: string | null | undefined, entryDate: string): Promise<JournalEntryDTO['projected']> {
   if (!decisionId) return null;
-  const rows = await db.select().from(decisions).where(and(eq(decisions.id, decisionId), eq(decisions.userId, userId))).limit(1);
-  const d = rows[0];
+  const d = (await decisionAccess(db, userId, decisionId))?.row;
   if (!d?.decidedRunId || !d.chosenScenarioId) return null;
   const [res, scen] = await Promise.all([
     db.select({ result: simulationResults.result }).from(simulationResults).where(eq(simulationResults.runId, d.decidedRunId)).limit(1),
@@ -130,13 +130,13 @@ export async function journalRoutes(app: FastifyInstance) {
   });
 
   async function assertLinks(userId: string, decisionId?: string | null, scenarioId?: string | null) {
-    if (decisionId) {
-      const d = await db.select({ id: decisions.id }).from(decisions).where(and(eq(decisions.id, decisionId), eq(decisions.userId, userId))).limit(1);
-      if (!d[0]) throw badRequest('That decision does not exist.');
-    }
+    // Journal entries are personal, but may point at any decision the user can open.
+    if (decisionId && !(await decisionAccess(db, userId, decisionId))) throw badRequest('That decision does not exist.');
     if (scenarioId) {
-      const s = await db.select({ decisionId: scenarios.decisionId }).from(scenarios).where(and(eq(scenarios.id, scenarioId), eq(scenarios.userId, userId))).limit(1);
-      if (!s[0] || (decisionId && s[0].decisionId !== decisionId)) throw badRequest('That scenario does not belong to the selected decision.');
+      const s = await db.select({ decisionId: scenarios.decisionId }).from(scenarios).where(eq(scenarios.id, scenarioId)).limit(1);
+      if (!s[0] || (decisionId && s[0].decisionId !== decisionId) || !(await decisionAccess(db, userId, s[0].decisionId))) {
+        throw badRequest('That scenario does not belong to the selected decision.');
+      }
     }
   }
 
