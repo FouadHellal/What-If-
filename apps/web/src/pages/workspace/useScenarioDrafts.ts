@@ -52,6 +52,7 @@ export function useScenarioDrafts(decision: DecisionDTO | undefined) {
           variables: draft.variables,
           flows: draft.flows,
           scores: draft.scores,
+          tax: draft.tax ?? null,
         });
         setScenarioInCache(qc, saved);
         setLocal((l) => {

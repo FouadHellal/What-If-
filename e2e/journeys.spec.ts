@@ -18,7 +18,7 @@ test.afterAll(async () => {
   await page.close();
 });
 
-test('first visitor creates the administrator account and completes onboarding', async () => {
+test('first visitor creates the administrator account, lands on the welcome screen and sets up a baseline', async () => {
   await page.goto('/');
   await expect(page).toHaveURL(/\/signin/);
   await expect(page.getByText('No accounts exist yet')).toBeVisible();
@@ -29,7 +29,10 @@ test('first visitor creates the administrator account and completes onboarding',
   await page.getByLabel('Password').fill(ADMIN.password);
   await page.getByRole('button', { name: 'Create account' }).click();
 
-  await expect(page).toHaveURL(/\/onboarding/);
+  // Question-first: no forced questionnaire.
+  await expect(page).toHaveURL('/');
+  await expect(page.getByRole('heading', { name: 'What decision are you facing?' })).toBeVisible();
+  await page.goto('/onboarding');
   await page.getByLabel('Country').selectOption('France');
   await page.getByLabel('City').fill('Lyon');
   await page.getByRole('button', { name: 'Continue' }).click();
@@ -50,12 +53,14 @@ test('first visitor creates the administrator account and completes onboarding',
   await page.getByRole('button', { name: 'Go to overview' }).click();
 
   await expect(page).toHaveURL('/');
-  await expect(page.getByRole('heading', { name: 'Start with a question' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'What decision are you facing?' })).toBeVisible();
 });
 
 test('a natural-language question becomes a reviewable decision', async () => {
-  await page.getByRole('link', { name: 'Describe a decision' }).click();
   await page.getByLabel('Your decision').fill('What if I move from Lyon to Paris for a better job?');
+  await page.getByRole('button', { name: 'Set up scenarios' }).click();
+  await expect(page).toHaveURL(/\/decisions\/new\?q=/);
+  await expect(page.getByLabel('Your decision')).toHaveValue('What if I move from Lyon to Paris for a better job?');
   await page.getByRole('button', { name: 'Set up scenarios' }).click();
 
   await expect(page.getByText('Review before creating')).toBeVisible();
@@ -123,6 +128,48 @@ test('the comparison shows every scenario side by side', async () => {
   await expect(page.locator('table').first()).toContainText('Date');
 });
 
+test('the summary explains robustness, break-even and what would change the outcome', async () => {
+  await page.getByRole('tab', { name: 'Summary' }).click();
+  await expect(page.getByText('Highest expected outcome')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'How robust is each path?' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'When does it pay off?' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Commonly overlooked costs' })).toBeVisible();
+  await expect(page.locator('.glance-item')).toHaveCount(3);
+});
+
+test('goals can be set and are evaluated for every scenario', async () => {
+  await page.locator('.ws-header').getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: 'Simulation settings & goals' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: 'Add goal' }).click();
+  await dialog.getByLabel('Goal name').fill('Comfortable cushion');
+  await dialog.getByLabel('Target').fill('20000');
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('dialog')).toBeHidden();
+  await page.getByRole('tab', { name: 'Summary' }).click();
+  await expect(page.locator('.summary')).toContainText('Comfortable cushion');
+  await expect(page.locator('.summary table').filter({ hasText: 'Comfortable cushion' })).toContainText('%');
+});
+
+test('the lab runs experiments without changing the scenario', async () => {
+  await page.getByRole('tab', { name: 'Lab' }).click();
+  await expect(page.getByRole('heading', { name: 'Decision Lab' })).toBeVisible();
+  await page.getByLabel('Scenario to experiment on').selectOption({ label: 'Move to Paris' });
+  await page.getByLabel('Gross annual salary value').fill('50000');
+  await page.getByLabel('Gross annual salary value').press('Tab');
+  await expect(page.locator('.lab-compare')).toContainText('Difference');
+  await expect(page.locator('.lab-compare tbody tr').first()).toContainText(/-€\d[\d,]*/);
+  await page.getByLabel('Experiment name').fill('Lower offer');
+  await page.getByRole('button', { name: 'Save experiment' }).click();
+  await expect(page.locator('.exp-row')).toContainText('Lower offer');
+  await page.getByRole('tab', { name: 'Scenarios' }).click();
+  await page.locator('.rail-item', { hasText: 'Move to Paris' }).filter({ hasNotText: '(copy)' }).click();
+  await expect(page.getByLabel('Gross annual salary', { exact: true })).toHaveValue('62,000');
+  await page.getByRole('tab', { name: 'Lab' }).click();
+  await page.locator('.exp-row', { hasText: 'Lower offer' }).getByRole('button', { name: 'As scenario' }).click();
+  await expect(page.getByRole('heading', { level: 2, name: 'Lower offer' })).toBeVisible();
+});
+
 test('milestones can be added to the timeline', async () => {
   await page.getByRole('tab', { name: 'Timeline' }).click();
   await page.getByRole('button', { name: 'Add milestone' }).click();
@@ -141,8 +188,10 @@ test('risks and sensitivity explain what matters', async () => {
 });
 
 test('the AI analyst is optional and explains how to enable it', async () => {
-  await page.getByRole('tab', { name: 'AI analyst' }).click();
-  await expect(page.getByText('Connect an AI analyst (optional)')).toBeVisible();
+  await page.getByRole('tab', { name: 'Analyst' }).click();
+  await expect(page.getByText('No AI analyst is connected.')).toBeVisible();
+  // Evidence works without AI.
+  await expect(page.getByRole('heading', { name: 'Evidence' })).toBeVisible();
 });
 
 test('recording a decision pins the projection and enables reality check-ins', async () => {
@@ -198,12 +247,8 @@ test('another user cannot open someone else’s decision', async ({ browser }) =
   await other.getByLabel('Email').fill(MEMBER.email);
   await other.getByLabel('Password').fill(MEMBER.password);
   await other.getByRole('button', { name: 'Create account' }).click();
-  await expect(other).toHaveURL(/\/onboarding/);
-  await other.getByRole('button', { name: 'Continue' }).click();
-  await other.getByRole('button', { name: 'Skip for now' }).click();
-  await other.getByRole('button', { name: 'Continue' }).click();
-  await other.getByRole('button', { name: 'Go to overview' }).click();
   await expect(other).toHaveURL('/');
+
   const api = await other.request.get(`/api/decisions/${decisionUrl.split('/').pop()}`);
   expect(api.status()).toBe(404);
   await other.goto(decisionUrl);

@@ -24,6 +24,12 @@ export const DECISION_CATEGORIES = [
   'sabbatical',
   'career_change',
   'family',
+  'job_offer',
+  'debt_payoff',
+  'major_purchase',
+  'working_hours',
+  'study_path',
+  'certification',
   'other',
 ] as const;
 export const decisionCategory = z.enum(DECISION_CATEGORIES);

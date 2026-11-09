@@ -31,3 +31,4 @@ export const AI_TASK_LABELS: Record<string, { label: string; description: string
   alternatives: { label: 'Suggest alternatives', description: 'Other paths worth modelling.' },
   summary: { label: 'Executive summary', description: 'A concise summary of the trade-offs, for your report.' },
 };
+export const RESEARCH_COUNTRY_HINT = 'Lookups send only a currency pair or country code to the public source — never your data.';

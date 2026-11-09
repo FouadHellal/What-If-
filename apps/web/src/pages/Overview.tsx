@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { BookOpen, Flag, Plus, Sparkles, Split } from 'lucide-react';
+import { useState } from 'react';
+import { ArrowRight, BookOpen, FileText, Flag, FlaskConical, Plus, Sparkles, Split, UserRound } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { JOURNAL_TYPE_LABELS, STATUS_LABELS, categoryInfo, type DecisionSummaryDTO } from '@whatif/shared';
+import { JOURNAL_TYPE_LABELS, STATUS_LABELS, categoryInfo, type DecisionSummaryDTO, type OverviewDTO } from '@whatif/shared';
 import { keys, useOverview } from '../api/queries';
 import { post } from '../api/client';
 import { useSession } from '../lib/session';
@@ -111,49 +112,43 @@ export default function Overview() {
       )}
       {q.error && <ErrorState error={q.error} onRetry={() => void q.refetch()} />}
 
-      {d && d.counts.decisions === 0 && (
-        <div className="overview-empty">
-          <EmptyState
-            icon={<Split />}
-            title="Start with a question"
-            actions={
-              <>
-                <ButtonLink to="/decisions/new" variant="primary" icon={<Plus aria-hidden />}>
-                  Describe a decision
-                </ButtonLink>
-                {!d.hasExample && (
-                  <Button icon={<Sparkles aria-hidden />} onClick={() => void loadExample()}>
-                    Explore the example
-                  </Button>
-                )}
-              </>
-            }
-          >
-            Write what you are considering — “What if I move to Lisbon?” — and What-If will turn it into scenarios with explicit, editable assumptions you can compare.
-          </EmptyState>
-        </div>
-      )}
+      {d && d.counts.decisions === 0 && <Welcome hasExample={d.hasExample} onExample={() => void loadExample()} />}
 
       {d && d.counts.decisions > 0 && (
         <>
-          <div className="stats" style={{ marginBottom: 'var(--s-10)' }}>
-            <div className="stat">
-              <div className="stat-label">Active decisions</div>
-              <div className="stat-value num">{d.counts.decisions}</div>
+          {d.attention.length > 0 && (
+            <section className="attention">
+              <div className="section-head">
+                <h2 className="section-title">Needs your attention</h2>
+              </div>
+              {d.attention.map((a) => (
+                <Link key={`${a.decisionId}-${a.reason}`} to={`/decisions/${a.decisionId}?tab=${a.reason === 'missing_inputs' ? 'scenarios' : a.reason === 'checkin_due' || a.reason === 'deciding' ? (a.reason === 'deciding' ? 'summary' : 'decide') : 'summary'}`} className="attention-row">
+                  <span className={`reason ${a.reason}`}>{ATTENTION[a.reason]}</span>
+                  <span className="grow">
+                    <span className="title serif">{a.title}</span>
+                    <span className="sub" style={{ display: 'block' }}>
+                      {a.detail}
+                    </span>
+                  </span>
+                  <ArrowRight size={14} className="faint" aria-hidden />
+                </Link>
+              ))}
+            </section>
+          )}
+          {d.profileCompleteness < 60 && (
+            <div className="callout" style={{ marginBottom: 'var(--s-8)', alignItems: 'center' }}>
+              <UserRound size={16} aria-hidden />
+              <div style={{ flex: 1 }}>
+                <strong>Your baseline is {d.profileCompleteness} % complete.</strong> A few numbers about today make every “stay as I am” scenario accurate. All optional.
+                <div className="progress" style={{ marginTop: 8, maxWidth: 260 }}>
+                  <span style={{ width: `${d.profileCompleteness}%` }} />
+                </div>
+              </div>
+              <ButtonLink to="/onboarding" size="sm">
+                Set up baseline
+              </ButtonLink>
             </div>
-            <div className="stat">
-              <div className="stat-label">Scenarios</div>
-              <div className="stat-value num">{d.counts.scenarios}</div>
-            </div>
-            <div className="stat">
-              <div className="stat-label">Decided</div>
-              <div className="stat-value num">{d.counts.decided}</div>
-            </div>
-            <div className="stat">
-              <div className="stat-label">Journal entries</div>
-              <div className="stat-value num">{d.counts.journal}</div>
-            </div>
-          </div>
+          )}
 
           <section className="section">
             <div className="section-head">
@@ -231,8 +226,129 @@ export default function Overview() {
               </div>
             </section>
           </div>
+          {(d.recentExperiments.length > 0 || d.recentReports.length > 0) && (
+            <div className="grid-2 section">
+              <section>
+                <div className="section-head">
+                  <h2 className="section-title">Recent experiments</h2>
+                </div>
+                {d.recentExperiments.length === 0 ? (
+                  <p className="faint" style={{ fontSize: 'var(--text-sm)', padding: 'var(--s-3) 0' }}>
+                    Try variations safely in a decision’s Lab.
+                  </p>
+                ) : (
+                  <div className="list">
+                    {d.recentExperiments.map((e) => (
+                      <Link key={e.id} to={`/decisions/${e.decisionId}?tab=lab`} className="list-row">
+                        <FlaskConical size={14} className="faint" aria-hidden />
+                        <div className="grow">
+                          <div className="title">{e.name}</div>
+                          <div className="sub">
+                            {e.decisionTitle} · {relativeTime(e.createdAt)}
+                          </div>
+                        </div>
+                        <span className={`num ${e.delta >= 0 ? 'delta-good' : 'delta-bad'}`} style={{ fontSize: 'var(--text-sm)' }}>
+                          {money(e.delta, e.currency, { sign: true, compact: true })}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </section>
+              <section>
+                <div className="section-head">
+                  <h2 className="section-title">Saved reports</h2>
+                </div>
+                {d.recentReports.length === 0 ? (
+                  <p className="faint" style={{ fontSize: 'var(--text-sm)', padding: 'var(--s-3) 0' }}>
+                    Generate a report from a decision’s Decide tab.
+                  </p>
+                ) : (
+                  <div className="list">
+                    {d.recentReports.map((r) => (
+                      <Link key={r.id} to={`/reports/${r.id}`} className="list-row">
+                        <FileText size={14} className="faint" aria-hidden />
+                        <div className="grow">
+                          <div className="title">{r.title}</div>
+                          <div className="sub">{relativeTime(r.createdAt)}</div>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
         </>
       )}
+    </div>
+  );
+}
+
+const ATTENTION: Record<OverviewDTO['attention'][number]['reason'], string> = {
+  missing_inputs: 'Missing inputs',
+  checkin_due: 'Check-in due',
+  deciding: 'Ready to decide',
+  stale: 'Untouched',
+};
+
+function Welcome({ hasExample, onExample }: { hasExample: boolean; onExample: () => void }) {
+  const navigate = useNavigate();
+  const [q, setQ] = useState('');
+  return (
+    <div className="welcome">
+      <h2 className="page-title" style={{ fontSize: 'var(--text-xl)' }}>
+        What decision are you facing?
+      </h2>
+      <p className="page-subtitle">Start with a sentence. You can add details — and your financial baseline — as you go.</p>
+      <form
+        className="question-box"
+        style={{ marginTop: 'var(--s-5)' }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          navigate(`/decisions/new?q=${encodeURIComponent(q)}`);
+        }}
+      >
+        <label htmlFor="welcome-q" className="sr-only">
+          Your decision
+        </label>
+        <textarea id="welcome-q" className="question-input serif" rows={2} placeholder="What if I move to Lisbon and work remotely?" value={q} onChange={(e) => setQ(e.target.value)} />
+        <div className="question-actions">
+          <span className="faint" style={{ fontSize: 'var(--text-xs)' }}>
+            Interpreted on this server — no AI needed.
+          </span>
+          <Button type="submit" variant="primary" disabled={q.trim().length < 5}>
+            Set up scenarios <ArrowRight aria-hidden />
+          </Button>
+        </div>
+      </form>
+      <div className="row" style={{ marginTop: 'var(--s-4)' }}>
+        {!hasExample && (
+          <Button icon={<Sparkles aria-hidden />} onClick={onExample}>
+            Explore a worked example
+          </Button>
+        )}
+        <ButtonLink to="/decisions/new" variant="ghost">
+          Browse templates
+        </ButtonLink>
+      </div>
+      <div className="welcome-steps">
+        <div>
+          <span className="num-badge">1</span>
+          <h3>Describe the paths</h3>
+          <p>Each alternative becomes a scenario with explicit assumptions. Unknown values are flagged — never invented.</p>
+        </div>
+        <div>
+          <span className="num-badge">2</span>
+          <h3>See what it depends on</h3>
+          <p>Ranges, risks and break-even points show how robust each path is, and which facts would change the outcome.</p>
+        </div>
+        <div>
+          <span className="num-badge">3</span>
+          <h3>Decide, then compare reality</h3>
+          <p>Record your choice and why. Later check-ins show how life compares with the plan.</p>
+        </div>
+      </div>
     </div>
   );
 }

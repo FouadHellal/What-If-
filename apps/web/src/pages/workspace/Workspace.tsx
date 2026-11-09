@@ -1,26 +1,34 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useQueryClient } from '@tanstack/react-query';
-import { Archive, ArchiveRestore, ChartLine, ChevronRight, CircleCheck, CloudOff, FileText, Flag, Gavel, Layers, Pencil, ShieldAlert, Sparkles, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, ChartLine, ChevronRight, CircleCheck, CloudOff, Compass, FileText, Flag, FlaskConical, Gavel, Layers, Pencil, ShieldAlert, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react';
 import { DECISION_STATUSES, STATUS_LABELS, categoryInfo, type DecisionDTO, type DecisionStatus } from '@whatif/shared';
 import { del, patch, post } from '../../api/client';
 import { keys, useDecision } from '../../api/queries';
-import { useSimulations } from '../../lib/simulation';
+import { useIntelligence, useSimulations } from '../../lib/simulation';
+import { useSession } from '../../lib/session';
+import type { DecisionIntelligence } from '@whatif/shared';
+import { SummaryTab, SummaryStrip } from './SummaryTab';
+import { LabTab } from './LabTab';
+import { DecisionSettingsDialog } from './DecisionSettingsDialog';
+import type { SimulationResult } from '@whatif/engine';
 import { Badge, Button, Callout, ConfirmDialog, Dialog, ErrorState, Field, Input, Menu, Select, Skeleton, Spinner, Textarea, useToast } from '../../components/ui';
 import { useScenarioDrafts, type SaveState } from './useScenarioDrafts';
 import { CompareTab } from './CompareTab';
 import { ScenariosTab } from './ScenariosTab';
 import { TimelineTab } from './TimelineTab';
 import { RisksTab } from './RisksTab';
-import { AnalystTab } from './AnalystTab';
+import { AnalystTab } from './AnalystPanels';
 import { DecideTab } from './DecideTab';
 
 const TABS = [
-  { id: 'compare', label: 'Compare', icon: ChartLine },
+  { id: 'summary', label: 'Summary', icon: Compass },
   { id: 'scenarios', label: 'Scenarios', icon: Layers },
-  { id: 'timeline', label: 'Timeline', icon: Flag },
+  { id: 'compare', label: 'Compare', icon: ChartLine },
+  { id: 'lab', label: 'Lab', icon: FlaskConical },
   { id: 'risks', label: 'Risks & sensitivity', icon: ShieldAlert },
-  { id: 'analyst', label: 'AI analyst', icon: Sparkles },
+  { id: 'timeline', label: 'Timeline', icon: Flag },
+  { id: 'analyst', label: 'Analyst', icon: Sparkles },
   { id: 'decide', label: 'Decide', icon: Gavel },
 ] as const;
 export type TabId = (typeof TABS)[number]['id'];
@@ -44,7 +52,11 @@ function SaveIndicator({ state, onRetry }: { state: SaveState; onRetry: () => vo
 export type WorkspaceContext = {
   decision: DecisionDTO;
   drafts: ReturnType<typeof useScenarioDrafts>;
-  results: ReturnType<typeof useSimulations>;
+  results: Map<string, SimulationResult>;
+  computing: Set<string>;
+  intel: DecisionIntelligence | null;
+  intelLoading: boolean;
+  lifeWeights: Record<string, number>;
   goTo: (tab: TabId, scenarioId?: string) => void;
   selectedId: string | null;
   refresh: () => void;
@@ -53,12 +65,17 @@ export type WorkspaceContext = {
 export default function Workspace() {
   const { id } = useParams<{ id: string }>();
   const [params, setParams] = useSearchParams();
-  const tab = (TABS.find((t) => t.id === params.get('tab'))?.id ?? 'compare') as TabId;
+  const tab = (TABS.find((t) => t.id === params.get('tab'))?.id ?? 'summary') as TabId;
   const q = useDecision(id);
   const decision = q.data;
   const drafts = useScenarioDrafts(decision);
   const active = useMemo(() => drafts.scenarios.filter((s) => s.status === 'active'), [drafts.scenarios]);
-  const results = useSimulations(drafts.scenarios);
+  const sim = useSimulations(drafts.scenarios, decision);
+  const results = sim.results;
+  const { profile } = useSession();
+  const lifeWeights = (decision?.priorities ?? profile?.priorities ?? {}) as Record<string, number>;
+  const intel = useIntelligence(decision, drafts.scenarios, results, lifeWeights);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const qc = useQueryClient();
   const navigate = useNavigate();
   const toast = useToast();
@@ -111,7 +128,7 @@ export default function Workspace() {
     }
   };
 
-  const ctx: WorkspaceContext = { decision, drafts, results, goTo, selectedId, refresh };
+  const ctx: WorkspaceContext = { decision, drafts, results, computing: sim.computing, intel: intel.data, intelLoading: intel.loading, lifeWeights, goTo, selectedId, refresh };
 
   return (
     <div className="page workspace">
@@ -145,6 +162,7 @@ export default function Workspace() {
           <Menu
             items={[
               { label: 'Edit title & description', icon: <Pencil />, onSelect: () => setEditing(true) },
+              { label: 'Simulation settings & goals', icon: <SlidersHorizontal />, onSelect: () => setSettingsOpen(true) },
               decision.status === 'archived'
                 ? { label: 'Restore from archive', icon: <ArchiveRestore />, onSelect: () => void setStatus('exploring') }
                 : { label: 'Archive decision', icon: <Archive />, onSelect: () => void setStatus('archived') },
@@ -159,6 +177,8 @@ export default function Workspace() {
         <Callout tone="warn">This decision is archived. It stays fully editable and is hidden from your active lists.</Callout>
       )}
 
+      <SummaryStrip ctx={ctx} />
+
       <div className="tabs ws-tabs" role="tablist" aria-label="Workspace sections">
         {TABS.map((t) => (
           <button key={t.id} role="tab" className="tab" aria-selected={tab === t.id} onClick={() => goTo(t.id)}>
@@ -169,6 +189,8 @@ export default function Workspace() {
       </div>
 
       <div className="ws-body" role="tabpanel">
+        {tab === 'summary' && <SummaryTab ctx={ctx} openSettings={() => setSettingsOpen(true)} />}
+        {tab === 'lab' && <LabTab ctx={ctx} />}
         {tab === 'compare' && <CompareTab ctx={ctx} />}
         {tab === 'scenarios' && <ScenariosTab ctx={ctx} />}
         {tab === 'timeline' && <TimelineTab ctx={ctx} />}
@@ -177,6 +199,7 @@ export default function Workspace() {
         {tab === 'decide' && <DecideTab ctx={ctx} />}
       </div>
 
+      <DecisionSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} decision={decision} onSaved={(d) => qc.setQueryData(keys.decision(d.id), d)} />
       <EditDecisionDialog open={editing} onClose={() => setEditing(false)} decision={decision} onSaved={(d) => qc.setQueryData(keys.decision(d.id), d)} />
       <ConfirmDialog
         open={confirmDelete}

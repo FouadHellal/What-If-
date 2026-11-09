@@ -252,10 +252,6 @@ export function buildIntelligence(input: IntelligenceInput): DecisionIntelligenc
     if (res.cases.worst.summary.finalNetWorth < res.expected.summary.startingNetWorth) failureModes.push({ scenarioId: r.id, severity: 'medium', text: 'In the worst case it ends below today’s net worth.' });
     if (res.expected.summary.firstShortfallMonth !== null) failureModes.push({ scenarioId: r.id, severity: 'high', text: 'Cash goes negative even in the expected case.' });
   }
-  for (const m of mind.changers.filter((c) => c.previousLeaderId === mind.leaderId && c.scenarioId === mind.leaderId).slice(0, 3)) {
-    failureModes.push({ scenarioId: m.scenarioId, severity: m.distance < 0.15 ? 'high' : 'medium', text: `Loses its lead if ${m.label.toLowerCase()} is ${m.side} the threshold.` });
-  }
-
   // Completeness
   let missing = 0;
   let systemValues = 0;

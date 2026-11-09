@@ -57,6 +57,12 @@ export const CATEGORIES: CategoryInfo[] = [
   { id: 'sabbatical', label: 'Take time off', description: 'Plan a sabbatical and your return to work.', example: 'What if I take a year off to travel?', icon: 'sun' },
   { id: 'career_change', label: 'Change career', description: 'Retrain and switch to a different profession.', example: 'What if I change my career to become a UX designer?', icon: 'repeat' },
   { id: 'family', label: 'Start a family', description: 'Understand the costs and time of having children.', example: 'What if we start a family in the next two years?', icon: 'users' },
+  { id: 'job_offer', label: 'Accept a job offer', description: 'Compare an offer with staying, including notice and commute.', example: 'What if I accept the job offer at 65k?', icon: 'briefcase' },
+  { id: 'debt_payoff', label: 'Pay off debt', description: 'Minimum payments, paying off faster, or investing instead.', example: 'What if I pay off my student loan faster?', icon: 'landmark' },
+  { id: 'major_purchase', label: 'Major purchase', description: 'Buy now, finance it, or wait and save.', example: 'What if I buy a new car?', icon: 'shopping-bag' },
+  { id: 'working_hours', label: 'Change working hours', description: 'Part-time or a four-day week: less pay, more time.', example: 'What if I work a four-day week?', icon: 'clock' },
+  { id: 'study_path', label: 'University or self-study', description: 'Full-time study versus learning while you work.', example: 'What if I do a degree full-time instead of self-study?', icon: 'graduation-cap' },
+  { id: 'certification', label: 'Professional certification', description: 'Fees and study time now, a higher salary later.', example: 'What if I get my CCNP certification?', icon: 'award' },
   { id: 'other', label: 'Something else', description: 'Start from a blank comparison of two paths.', example: 'What if I…', icon: 'sparkles' },
 ];
 
@@ -384,6 +390,159 @@ export function buildFromTemplate(category: DecisionCategory, ctx: DraftContext,
               flow({ kind: 'expense', label: 'Childcare and child costs', amount: null, startMonth: start + 12, note: 'Monthly cost — needs your input' }),
               flow({ kind: 'time', label: 'Parenting time', amount: 20, startMonth: start, source: 'system', note: 'Assumed extra hours per week — adjust' }),
             ],
+          },
+        ],
+      };
+    }
+    case 'job_offer': {
+      return {
+        title: 'Accept the job offer?',
+        scenarios: [
+          statusQuo(ctx, 'Stay in my current job', 'Decline the offer and continue as you are.'),
+          {
+            name: 'Accept the offer',
+            description: 'Move to the new employer after your notice period.',
+            variables: {
+              ...systemDefaults(),
+              ...fromBaseline(ctx.baseline),
+              commuteHoursPerWeek: val(null, 'user', 'Weekly commute to the new workplace — needs your input'),
+            },
+            flows: [
+              flow({ kind: 'salary_change', label: 'New salary', amount: e.annualSalary ?? null, startMonth: 2, note: e.annualSalary ? 'From your question' : 'Gross annual salary in the offer — needs your input' }),
+              flow({ kind: 'one_time_income', label: 'Signing bonus', amount: null, startMonth: 2, note: 'If the offer includes one; otherwise remove this item' }),
+            ],
+            assumptions: [{ text: 'Benefits (pension matching, bonus, holidays) differ between employers — compare them explicitly.', category: 'question', source: 'system' }],
+          },
+        ],
+      };
+    }
+    case 'debt_payoff': {
+      const debtVars = () => ({
+        startingDebt: val(ctx.baseline?.debt ?? null, 'user', ctx.baseline?.debt ? FROM_BASELINE : 'Outstanding balance — needs your input'),
+        debtInterestRate: val(null, 'user', 'Annual interest rate on the debt — needs your input'),
+      });
+      return {
+        title: 'Pay off debt faster?',
+        scenarios: [
+          {
+            ...statusQuo(ctx, 'Keep minimum payments', 'Pay the required minimum and keep the rest in cash.'),
+            variables: { ...systemDefaults(), ...fromBaseline(ctx.baseline), ...debtVars(), debtMonthlyPayment: val(ctx.baseline?.monthlyDebtPayment ?? null, 'user', 'Your current minimum payment') },
+          },
+          {
+            name: 'Pay it off faster',
+            description: 'Put extra money towards the debt every month until it is gone.',
+            variables: { ...systemDefaults(), ...fromBaseline(ctx.baseline), ...debtVars(), debtMonthlyPayment: val(null, 'user', 'Total monthly payment including the extra amount') },
+          },
+          {
+            name: 'Invest the difference instead',
+            description: 'Keep minimum payments and invest the extra amount.',
+            variables: { ...systemDefaults(), ...fromBaseline(ctx.baseline), ...debtVars(), debtMonthlyPayment: val(ctx.baseline?.monthlyDebtPayment ?? null, 'user', 'Your current minimum payment'), monthlyInvestment: val(null, 'user', 'The extra amount you would otherwise put towards the debt') },
+            assumptions: [{ text: 'Investment returns are uncertain; paying off debt is a guaranteed return equal to its interest rate.', category: 'risk', source: 'system' }],
+          },
+        ],
+      };
+    }
+    case 'major_purchase': {
+      return {
+        title: 'Make a major purchase?',
+        scenarios: [
+          statusQuo(ctx, 'Don’t buy', 'Keep things as they are.'),
+          {
+            name: 'Buy now with savings',
+            description: 'Pay in full from cash.',
+            variables: { ...systemDefaults(), ...fromBaseline(ctx.baseline) },
+            flows: [
+              flow({ kind: 'one_time_expense', label: 'Purchase price', amount: e.oneTimeAmount ?? null, startMonth: 0, note: 'Needs your input' }),
+              flow({ kind: 'expense', label: 'Running costs', amount: null, startMonth: 0, note: 'Insurance, maintenance, fuel or energy — needs your input' }),
+            ],
+          },
+          {
+            name: 'Finance it',
+            description: 'Take a loan and repay it monthly.',
+            variables: { ...systemDefaults(), ...fromBaseline(ctx.baseline) },
+            flows: [
+              flow({ kind: 'loan', label: 'Purchase loan', amount: e.oneTimeAmount ?? null, startMonth: 0, rate: null, termMonths: 48, note: 'Loan amount — needs your input' }),
+              flow({ kind: 'one_time_expense', label: 'Purchase price', amount: e.oneTimeAmount ?? null, startMonth: 0, note: 'Needs your input' }),
+              flow({ kind: 'expense', label: 'Running costs', amount: null, startMonth: 0, note: 'Needs your input' }),
+            ],
+          },
+        ],
+      };
+    }
+    case 'working_hours': {
+      return {
+        title: 'Change my working hours?',
+        scenarios: [
+          statusQuo(ctx, 'Keep full-time hours', 'Continue as you are.'),
+          {
+            name: 'Work a four-day week',
+            description: 'Reduce hours to 80 % with a matching salary cut.',
+            variables: {
+              ...systemDefaults(),
+              ...fromBaseline(ctx.baseline),
+              workHoursPerWeek: val(32, 'system', 'Assumes 4 × 8 hours — adjust'),
+            },
+            flows: [
+              flow({
+                kind: 'salary_change',
+                label: 'Reduced salary',
+                amount: ctx.baseline?.annualIncome ? Math.round(ctx.baseline.annualIncome * 0.8) : null,
+                startMonth: 0,
+                source: ctx.baseline?.annualIncome ? 'system' : 'user',
+                note: ctx.baseline?.annualIncome ? 'Assumed 80 % of your current salary — check your contract' : 'Gross salary at reduced hours — needs your input',
+              }),
+            ],
+            assumptions: [{ text: 'Pension contributions and career progression may slow with fewer hours.', category: 'risk', source: 'system' }],
+          },
+        ],
+      };
+    }
+    case 'study_path': {
+      return {
+        title: 'University or self-study?',
+        scenarios: [
+          statusQuo(ctx, 'Keep working, no study', 'Continue in your current role.'),
+          {
+            name: 'Study full-time',
+            description: 'Stop working for a degree, then start in the new field.',
+            variables: { ...systemDefaults(), ...fromBaseline(ctx.baseline) },
+            flows: [
+              flow({ kind: 'income_gap', label: 'Full-time study', amount: 0, startMonth: 0, endMonth: (e.durationMonths ?? 36), note: 'No salary while studying' }),
+              flow({ kind: 'expense', label: 'Tuition', amount: null, startMonth: 0, endMonth: (e.durationMonths ?? 36), annualGrowth: 0, note: 'Monthly tuition — needs your input' }),
+              flow({ kind: 'time', label: 'Study time', amount: 40, startMonth: 0, endMonth: (e.durationMonths ?? 36), source: 'system', note: 'Assumed full-time study — adjust' }),
+              flow({ kind: 'salary_change', label: 'Salary after graduating', amount: null, startMonth: (e.durationMonths ?? 36) + 3, note: 'Expected starting salary — needs your input' }),
+            ],
+          },
+          {
+            name: 'Self-study while working',
+            description: 'Keep your job and learn in the evenings.',
+            variables: { ...systemDefaults(), ...fromBaseline(ctx.baseline) },
+            flows: [
+              flow({ kind: 'expense', label: 'Courses and materials', amount: null, startMonth: 0, endMonth: 24, annualGrowth: 0, note: 'Monthly cost — needs your input' }),
+              flow({ kind: 'time', label: 'Evening study', amount: 10, startMonth: 0, endMonth: 24, source: 'system', note: 'Assumed hours per week — adjust' }),
+              flow({ kind: 'salary_change', label: 'Salary after the switch', amount: null, startMonth: 27, note: 'Expected salary once qualified — needs your input' }),
+            ],
+            assumptions: [{ text: 'Some employers require a formal degree; check job listings in your target field.', category: 'question', source: 'system' }],
+          },
+        ],
+      };
+    }
+    case 'certification': {
+      const months = e.durationMonths ?? 6;
+      return {
+        title: 'Get a professional certification?',
+        scenarios: [
+          statusQuo(ctx, 'No certification', 'Continue as you are.'),
+          {
+            name: 'Get certified',
+            description: `Study for about ${monthsLabel(months)}, then aim for a better-paid role.`,
+            variables: { ...systemDefaults(), ...fromBaseline(ctx.baseline) },
+            flows: [
+              flow({ kind: 'one_time_expense', label: 'Exam and course fees', amount: e.oneTimeAmount ?? null, startMonth: 0, note: 'Needs your input' }),
+              flow({ kind: 'time', label: 'Study time', amount: 8, startMonth: 0, endMonth: months, source: 'system', note: 'Assumed hours per week — adjust' }),
+              flow({ kind: 'salary_change', label: 'Salary with certification', amount: null, startMonth: months + 3, note: 'Expected salary once certified — needs your input' }),
+            ],
+            assumptions: [{ text: 'A salary increase is not guaranteed; look at job offers that require the certification.', category: 'risk', source: 'system' }],
           },
         ],
       };

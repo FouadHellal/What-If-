@@ -9,6 +9,7 @@ import './styles/base.css';
 import './styles/components.css';
 import './styles/layout.css';
 import './styles/workspace.css';
+import './styles/v2.css';
 import { App } from './App';
 import { SessionProvider } from './lib/session';
 import { ToastProvider } from './components/ui';

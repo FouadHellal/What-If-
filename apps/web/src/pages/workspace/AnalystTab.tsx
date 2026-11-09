@@ -1,15 +1,15 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Check, CircleAlert, Lock, Settings, Sparkles, Trash2 } from 'lucide-react';
+import { Check, CircleAlert, Lock, Sparkles, Trash2 } from 'lucide-react';
 import { getVariableDefinition, isVariableKey } from '@whatif/engine';
 import { AI_TASKS, AI_TASK_LABELS, type AiAnalysisDTO, type AiSuggestion, type AiTask } from '@whatif/shared';
 import { ApiError, del, post } from '../../api/client';
 import { keys, useAiSettings, useAnalyses } from '../../api/queries';
 import { formatUnit, relativeTime } from '../../lib/format';
-import { Badge, Button, ButtonLink, Callout, EmptyState, ScenarioDot, Select, Skeleton, useToast } from '../../components/ui';
+import { Badge, Button, Callout, ScenarioDot, Select, Skeleton, useToast } from '../../components/ui';
 import type { WorkspaceContext } from './Workspace';
 
-export function AnalystTab({ ctx }: { ctx: WorkspaceContext }) {
+export function AnalysisTasks({ ctx }: { ctx: WorkspaceContext }) {
   const { decision, drafts } = ctx;
   const settings = useAiSettings();
   const list = useAnalyses(decision.id);
@@ -23,21 +23,7 @@ export function AnalystTab({ ctx }: { ctx: WorkspaceContext }) {
 
   if (settings.isLoading) return <Skeleton height={200} />;
 
-  if (!s?.enabled || !s.configured) {
-    return (
-      <EmptyState
-        icon={<Sparkles />}
-        title={s?.configured ? 'The AI analyst is turned off' : 'Connect an AI analyst (optional)'}
-        actions={
-          <ButtonLink to="/settings/ai" variant="primary" icon={<Settings aria-hidden />}>
-            AI settings
-          </ButtonLink>
-        }
-      >
-        An AI model can review your assumptions, explain results, surface risks and suggest alternatives — always working from the engine’s calculated numbers. Everything else in What-If works without it. You can use OpenAI-compatible APIs, Anthropic, or a local model through Ollama.
-      </EmptyState>
-    );
-  }
+  if (!s?.enabled || !s.configured) return null;
 
   const run = async (task: AiTask) => {
     drafts.flush();

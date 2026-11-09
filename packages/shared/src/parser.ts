@@ -46,6 +46,12 @@ const CATEGORY_RULES: { category: DecisionCategory; patterns: RegExp[]; weight: 
   { category: 'sabbatical', weight: 3, patterns: [/\b(year off|time off|sabbatical|gap year|career break|take a break|months off)\b/] },
   { category: 'career_change', weight: 2, patterns: [/\b(change|switch|pivot)(ing)? (my )?(career|profession|field)\b/, /\bretrain(ing)?\b/, /\bbecome an? \w+/] },
   { category: 'education', weight: 2, patterns: [/\b(learn(ing)?|study(ing)?|master'?s|mba|degree|bootcamp|course|certification|phd)\b/] },
+  { category: 'job_offer', weight: 3, patterns: [/\b(accept|take)(ing)? (the |a |this )?(new )?(job )?offer\b/, /\bjob offer\b/] },
+  { category: 'debt_payoff', weight: 3, patterns: [/\bpay (off|down) (my )?(debt|loans?|credit card|student loan)/, /\b(debt|loan)s? (off|faster|early)\b/] },
+  { category: 'major_purchase', weight: 2, patterns: [/\bbuy(ing)? (a |an )?(new )?(car|vehicle|motorbike|boat|camper)\b/, /\b(major|big|large) purchase\b/] },
+  { category: 'working_hours', weight: 3, patterns: [/\b(part[- ]time|four[- ]day week|4[- ]day week|fewer hours|reduce (my )?hours|work less)\b/] },
+  { category: 'certification', weight: 3, patterns: [/\b(certification|certificate|certified|ccnp|cissp|pmp|aws certif)/] },
+  { category: 'study_path', weight: 3, patterns: [/\b(university|degree) (or|vs\.?|versus) (self[- ]study|online|bootcamp|working)\b/, /\bself[- ]study\b/, /\bstudy full[- ]time\b/] },
   { category: 'job_change', weight: 2, patterns: [/\b(leave|quit|resign)(ing)? (from )?(my )?(current )?(job|role|position|work|employer)\b/, /\b(new job|job offer|change jobs?|another job|promotion)\b/] },
   { category: 'relocation', weight: 2, patterns: [/\b(move|moving|relocat\w*|emigrat\w*|live|living)\b.*\b(to|in|abroad)\b/, /\babroad\b/] },
 ];

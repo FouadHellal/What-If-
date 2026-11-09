@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Clock, Minus, Plus, Trash2, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
+import { ChevronDown, ChevronRight, Clock, Minus, Plus, Trash2, TrendingDown, TrendingUp, Wallet, Briefcase, PauseCircle, Landmark } from 'lucide-react';
 import {
   PRIORITY_FACTORS,
   VARIABLES,
@@ -145,6 +145,9 @@ const FLOW_KINDS: { kind: FlowKind; label: string; short: string; icon: typeof W
   { kind: 'one_time_expense', label: 'One-time cost', short: 'One-time cost', icon: Wallet },
   { kind: 'one_time_income', label: 'One-time income', short: 'One-time income', icon: Wallet },
   { kind: 'time', label: 'Time commitment', short: 'Hours / week', icon: Clock },
+  { kind: 'salary_change', label: 'Salary change', short: 'New salary', icon: Briefcase },
+  { kind: 'income_gap', label: 'Period without salary', short: 'No salary', icon: PauseCircle },
+  { kind: 'loan', label: 'Loan', short: 'Loan', icon: Landmark },
 ];
 
 function newFlowId() {
@@ -161,7 +164,18 @@ export function FlowsEditor({ scenario, edit }: { scenario: ScenarioDTO; edit: E
       ...s,
       flows: [
         ...s.flows,
-        { id: newFlowId(), kind, label: FLOW_KINDS.find((k) => k.kind === kind)!.label, amount: null, startMonth: 0, endMonth: null, annualGrowth: null, amountMode: 'fixed', source: 'user' },
+        {
+          id: newFlowId(),
+          kind,
+          label: FLOW_KINDS.find((k) => k.kind === kind)!.label,
+          amount: kind === 'income_gap' ? 0 : null,
+          startMonth: 0,
+          endMonth: kind === 'income_gap' ? 6 : null,
+          annualGrowth: null,
+          amountMode: 'fixed',
+          ...(kind === 'loan' ? { rate: null, termMonths: 60 } : {}),
+          source: 'user',
+        },
       ],
     }));
 
@@ -169,16 +183,19 @@ export function FlowsEditor({ scenario, edit }: { scenario: ScenarioDTO; edit: E
     <section className="var-group">
       <div className="var-group-head static">
         <span className="name">Costs, income & commitments</span>
-        <span className="desc">Anything specific to this path: moving costs, tuition, a side income, study time.</span>
+        <span className="desc">Anything specific to this path: moving costs, tuition, a side income, study time, a later salary change, a break without pay, or a loan.</span>
       </div>
       {scenario.flows.length === 0 && <p className="faint" style={{ fontSize: 'var(--text-sm)', padding: '8px 0 4px 22px' }}>No items yet.</p>}
       <div className="flow-list">
         {scenario.flows.map((f) => {
-          const oneTime = f.kind.startsWith('one_time');
+          const oneTime = f.kind.startsWith('one_time') || f.kind === 'loan';
           const isTime = f.kind === 'time';
-          const suffix = isTime ? 'h/week' : oneTime ? scenario.currency : f.amountMode === 'percent_of_income' ? '% of salary' : `${scenario.currency}/mo`;
+          const isGap = f.kind === 'income_gap';
+          const isSalary = f.kind === 'salary_change';
+          const isLoan = f.kind === 'loan';
+          const suffix = isTime ? 'h/week' : isSalary ? `${scenario.currency}/yr gross` : oneTime ? scenario.currency : f.amountMode === 'percent_of_income' ? '% of salary' : `${scenario.currency}/mo`;
           return (
-            <div key={f.id} className={`flow-row ${f.amount === null ? 'missing' : ''}`}>
+            <div key={f.id} className={`flow-row ${f.amount === null && !isGap ? 'missing' : ''}`}>
               <div className="flow-main">
                 <input className="input input-sm flow-label" aria-label="Item name" value={f.label} maxLength={120} onChange={(e) => update(f.id, { label: e.target.value || 'Untitled item' })} />
                 <Select className="input-sm flow-kind" aria-label="Item type" value={f.kind} onChange={(e) => update(f.id, { kind: e.target.value as FlowKind, endMonth: e.target.value.startsWith('one_time') ? null : f.endMonth, amountMode: 'fixed' })}>
@@ -188,14 +205,20 @@ export function FlowsEditor({ scenario, edit }: { scenario: ScenarioDTO; edit: E
                     </option>
                   ))}
                 </Select>
-                <NumberInput className="flow-amount" size="sm" ariaLabel={`${f.label} amount`} value={f.amount} onChange={(v) => update(f.id, { amount: v })} suffix={suffix} digits={isTime ? 1 : 0} min={0} invalid={f.amount === null} />
+                {isGap ? (
+                  <span className="flow-amount faint" style={{ fontSize: 'var(--text-xs)' }}>
+                    Salary pauses for this period
+                  </span>
+                ) : (
+                  <NumberInput className="flow-amount" size="sm" ariaLabel={`${f.label} amount`} value={f.amount} onChange={(v) => update(f.id, { amount: v })} suffix={suffix} digits={isTime ? 1 : 0} min={0} invalid={f.amount === null} />
+                )}
                 <Button className="flow-del" variant="ghost" size="sm" iconOnly icon={<Trash2 />} onClick={() => remove(f.id)}>
                   Remove {f.label}
                 </Button>
               </div>
               <div className="flow-timing">
                 <label>
-                  <span>{oneTime ? 'In month' : 'From month'}</span>
+                  <span>{oneTime ? (isLoan ? 'Received in month' : 'In month') : 'From month'}</span>
                   <NumberInput size="sm" ariaLabel="Start month" value={f.startMonth} onChange={(v) => update(f.id, { startMonth: Math.max(0, Math.min(horizonMonths - 1, Math.round(v ?? 0))) })} digits={0} min={0} />
                   <span className="faint">{monthLabel(addMonths(scenario.startDate, f.startMonth))}</span>
                 </label>
@@ -206,19 +229,31 @@ export function FlowsEditor({ scenario, edit }: { scenario: ScenarioDTO; edit: E
                     <span className="faint">{f.endMonth ? monthLabel(addMonths(scenario.startDate, f.endMonth)) : 'end of horizon'}</span>
                   </label>
                 )}
-                {!isTime && !oneTime && (
+                {isLoan && (
+                  <>
+                    <label>
+                      <span>Interest</span>
+                      <NumberInput size="sm" ariaLabel="Loan interest rate" value={f.rate ?? null} placeholder="0" onChange={(v) => update(f.id, { rate: v })} suffix="%/yr" digits={2} min={0} max={100} />
+                    </label>
+                    <label>
+                      <span>Repaid over</span>
+                      <NumberInput size="sm" ariaLabel="Loan term in months" value={f.termMonths ?? null} placeholder="60" onChange={(v) => update(f.id, { termMonths: v === null ? null : Math.max(1, Math.round(v)) })} suffix="months" digits={0} min={1} />
+                    </label>
+                  </>
+                )}
+                {!isTime && !oneTime && !isGap && (
                   <label>
                     <span>Grows</span>
-                    <NumberInput size="sm" ariaLabel="Annual growth" value={f.annualGrowth ?? null} placeholder={f.kind === 'expense' ? 'Inflation' : '0'} onChange={(v) => update(f.id, { annualGrowth: v })} suffix="%/yr" digits={1} />
+                    <NumberInput size="sm" ariaLabel="Annual growth" value={f.annualGrowth ?? null} placeholder={f.kind === 'expense' ? 'Inflation' : isSalary ? 'Salary growth' : '0'} onChange={(v) => update(f.id, { annualGrowth: v })} suffix="%/yr" digits={1} />
                   </label>
                 )}
-                {!isTime && !oneTime && (
+                {!isTime && !oneTime && !isGap && !isSalary && (
                   <label className="checkbox" style={{ alignItems: 'center' }}>
                     <input type="checkbox" checked={f.amountMode === 'percent_of_income'} onChange={(e) => update(f.id, { amountMode: e.target.checked ? 'percent_of_income' : 'fixed' })} />
                     <span>% of salary</span>
                   </label>
                 )}
-                <SourceTag source={f.source} missing={f.amount === null} />
+                <SourceTag source={f.source} missing={f.amount === null && !isGap} />
               </div>
               {f.note && <div className="var-note" style={{ paddingLeft: 2 }}>{f.note}</div>}
             </div>
@@ -287,6 +322,90 @@ export function ScoresEditor({ scenario, edit }: { scenario: ScenarioDTO; edit: 
 }
 
 // ── Scenario settings ───────────────────────────────────────────────────────
+
+export function TaxEditor({ scenario, edit }: { scenario: ScenarioDTO; edit: Edit }) {
+  const tax = scenario.tax;
+  const on = Boolean(tax && tax.brackets.length > 0);
+  const setTax = (t: ScenarioDTO['tax']) => edit((s) => ({ ...s, tax: t }));
+  return (
+    <section className="var-group">
+      <div className="var-group-head static">
+        <span className="name">Income tax</span>
+        <span className="desc">
+          Use one effective rate (in Income above), or define the brackets that apply to you — for example from your tax authority. What-If ships no tax tables.
+        </span>
+      </div>
+      <label className="checkbox" style={{ margin: '4px 0 8px 2px' }}>
+        <input
+          type="checkbox"
+          checked={on}
+          onChange={(e) =>
+            setTax(e.target.checked ? { brackets: [{ upTo: 12_000, rate: 0 }, { upTo: 60_000, rate: 25 }, { upTo: null, rate: 40 }], allowance: 0, flatRate: 0 } : null)
+          }
+        />
+        <span>Use progressive tax brackets</span>
+      </label>
+      {on && tax && (
+        <div className="tax-editor">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Taxable income up to</th>
+                <th className="r">Rate</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {tax.brackets.map((b, i) => (
+                <tr key={i}>
+                  <td>
+                    {b.upTo === null ? (
+                      <span className="faint">Above that</span>
+                    ) : (
+                      <NumberInput size="sm" ariaLabel={`Bracket ${i + 1} limit`} value={b.upTo} digits={0} suffix={`${scenario.currency}/yr`} min={0} onChange={(v) => setTax({ ...tax, brackets: tax.brackets.map((x, j) => (j === i ? { ...x, upTo: v ?? 0 } : x)) })} />
+                    )}
+                  </td>
+                  <td className="r" style={{ width: 140 }}>
+                    <NumberInput size="sm" ariaLabel={`Bracket ${i + 1} rate`} value={b.rate} digits={2} suffix="%" min={0} max={100} onChange={(v) => setTax({ ...tax, brackets: tax.brackets.map((x, j) => (j === i ? { ...x, rate: v ?? 0 } : x)) })} />
+                  </td>
+                  <td style={{ width: 36 }}>
+                    {b.upTo !== null && tax.brackets.length > 2 && (
+                      <Button variant="ghost" size="sm" iconOnly icon={<Trash2 />} onClick={() => setTax({ ...tax, brackets: tax.brackets.filter((_, j) => j !== i) })}>
+                        Remove bracket
+                      </Button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="row" style={{ marginTop: 8 }}>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={<Plus />}
+              onClick={() => {
+                const closed = tax.brackets.filter((b) => b.upTo !== null);
+                const last = closed[closed.length - 1]?.upTo ?? 0;
+                setTax({ ...tax, brackets: [...closed, { upTo: last + 20_000, rate: closed[closed.length - 1]?.rate ?? 0 }, ...tax.brackets.filter((b) => b.upTo === null)] });
+              }}
+            >
+              Add bracket
+            </Button>
+            <label className="tax-inline">
+              <span>Tax-free allowance</span>
+              <NumberInput size="sm" ariaLabel="Tax-free allowance" value={tax.allowance ?? 0} digits={0} suffix={scenario.currency} min={0} onChange={(v) => setTax({ ...tax, allowance: v ?? 0 })} />
+            </label>
+            <label className="tax-inline">
+              <span>Social contributions</span>
+              <NumberInput size="sm" ariaLabel="Flat social contributions" value={tax.flatRate ?? 0} digits={2} suffix="%" min={0} max={100} onChange={(v) => setTax({ ...tax, flatRate: v ?? 0 })} />
+            </label>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
 
 export function ScenarioSettings({ scenario, edit, baseCurrency }: { scenario: ScenarioDTO; edit: Edit; baseCurrency: string }) {
   const fxMissing = scenario.currency !== baseCurrency && !scenario.exchangeRateToBase;

@@ -7,7 +7,7 @@ import { money } from '../../lib/format';
 import { fxFor } from '../../lib/simulation';
 import { Badge, Button, Callout, ConfirmDialog, Dialog, EmptyState, Field, Input, Menu, ScenarioDot, Textarea, useToast } from '../../components/ui';
 import type { WorkspaceContext } from './Workspace';
-import { FlowsEditor, ScenarioSettings, ScoresEditor, VariableGroups } from './VariableEditor';
+import { FlowsEditor, ScenarioSettings, ScoresEditor, TaxEditor, VariableGroups } from './VariableEditor';
 import { ProjectionPanel } from './ProjectionPanel';
 
 export function ScenariosTab({ ctx }: { ctx: WorkspaceContext }) {
@@ -121,6 +121,7 @@ export function ScenariosTab({ ctx }: { ctx: WorkspaceContext }) {
           <div className="scenario-editor">
             <VariableGroups scenario={selected} edit={(u) => drafts.edit(selected.id, u)} warnings={result?.warnings ?? []} />
             <FlowsEditor scenario={selected} edit={(u) => drafts.edit(selected.id, u)} />
+            <TaxEditor scenario={selected} edit={(u) => drafts.edit(selected.id, u)} />
             <ScoresEditor scenario={selected} edit={(u) => drafts.edit(selected.id, u)} />
           </div>
           <div className="scenario-results">

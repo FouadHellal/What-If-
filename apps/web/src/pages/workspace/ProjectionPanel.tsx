@@ -27,7 +27,10 @@ export function ProjectionPanel({ scenario, result }: { scenario: ScenarioDTO; r
   ];
   const bands: Band[] =
     field === 'netWorth' && result.uncertainty?.hasUncertainty
-      ? [{ id: 'p', label: '80 % of simulated outcomes', color, points: [{ x: startPoint.x, lo: startPoint.y, hi: startPoint.y }, ...result.uncertainty.netWorthBands.map((b, i) => ({ x: yearX(i), lo: b.p10, hi: b.p90 }))] }]
+      ? [
+          { id: 'p', label: 'P10–P90 (80 % of futures)', color, opacity: 0.09, points: [{ x: startPoint.x, lo: startPoint.y, hi: startPoint.y }, ...result.uncertainty.netWorthBands.map((b, i) => ({ x: yearX(i), lo: b.p10, hi: b.p90 }))] },
+          { id: 'q', label: 'P25–P75 (middle half)', color, opacity: 0.16, points: [{ x: startPoint.x, lo: startPoint.y, hi: startPoint.y }, ...result.uncertainty.netWorthBands.map((b, i) => ({ x: yearX(i), lo: b.p25, hi: b.p75 }))] },
+        ]
       : [];
 
   const fmtX = (x: number) => monthLabel(monthNumberToDate(x));
@@ -155,7 +158,7 @@ export function ProjectionPanel({ scenario, result }: { scenario: ScenarioDTO; r
           </tbody>
         </table>
         <p className="faint" style={{ fontSize: 'var(--text-xs)', marginTop: 8 }}>
-          Best and worst cases set every ranged input to its favourable or unfavourable end at once. The shaded band shows where 80 % of {result.uncertainty?.runs ?? 0} simulated combinations of your ranges ended up. None of these are predictions.
+          Best and worst cases set every ranged input to its favourable or unfavourable end at once. The darker band holds the middle half of {result.uncertainty?.runs ?? 0} simulated futures, the lighter band 80 % of them — including year-to-year market and inflation swings, job-loss risk and surprises where you set them. None of these are predictions.
         </p>
       </details>
       <RunRecord scenario={scenario} result={result} />

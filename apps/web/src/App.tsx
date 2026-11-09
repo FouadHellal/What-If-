@@ -24,11 +24,10 @@ function FullPageSpinner() {
 }
 
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { status, profile } = useSession();
+  const { status } = useSession();
   const loc = useLocation();
   if (status === 'loading') return <FullPageSpinner />;
   if (status === 'anonymous') return <Navigate to="/signin" replace state={{ from: loc.pathname + loc.search }} />;
-  if (profile && !profile.onboardingCompleted && loc.pathname !== '/onboarding') return <Navigate to="/onboarding" replace />;
   return <>{children}</>;
 }
 

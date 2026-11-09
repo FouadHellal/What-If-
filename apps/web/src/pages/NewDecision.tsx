@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router';
-import { ArrowLeft, ArrowRight, Briefcase, CircleAlert, GraduationCap, Home, MapPin, Plane, Plus, Repeat, Sparkles, Store, Sun, Trash2, TrendingUp, Users } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router';
+import { ArrowLeft, ArrowRight, Award, Briefcase, CircleAlert, Clock, GraduationCap, Home, Landmark, MapPin, Plane, Plus, Repeat, ShoppingBag, Sparkles, Store, Sun, Trash2, TrendingUp, Users } from 'lucide-react';
 import { VARIABLES } from '@whatif/engine';
 import { CATEGORIES, CURRENCIES, categoryInfo, type DecisionCategory, type DecisionDTO, type DecisionDraft, type ScenarioDraft } from '@whatif/shared';
 import { ApiError, get, post } from '../api/client';
@@ -8,14 +8,23 @@ import { useAiSettings, useInvalidateDecision } from '../api/queries';
 import { formatUnit } from '../lib/format';
 import { Badge, Button, Callout, Field, Input, NumberInput, ScenarioDot, Select, SourceTag, Switch, useToast } from '../components/ui';
 
-const ICONS: Record<string, typeof Plane> = { plane: Plane, briefcase: Briefcase, store: Store, home: Home, 'trending-up': TrendingUp, 'graduation-cap': GraduationCap, 'map-pin': MapPin, sun: Sun, repeat: Repeat, users: Users, sparkles: Sparkles };
+const ICONS: Record<string, typeof Plane> = { plane: Plane, briefcase: Briefcase, store: Store, home: Home, 'trending-up': TrendingUp, 'graduation-cap': GraduationCap, 'map-pin': MapPin, sun: Sun, repeat: Repeat, users: Users, sparkles: Sparkles, landmark: Landmark, 'shopping-bag': ShoppingBag, clock: Clock, award: Award };
+
+const GROUPS: { label: string; ids: string[] }[] = [
+  { label: 'Career', ids: ['job_change', 'job_offer', 'career_change', 'business'] },
+  { label: 'Financial', ids: ['housing', 'investing', 'debt_payoff', 'major_purchase'] },
+  { label: 'Lifestyle', ids: ['relocation', 'city_move', 'sabbatical', 'working_hours', 'family'] },
+  { label: 'Education', ids: ['education', 'study_path', 'certification'] },
+  { label: 'Other', ids: ['other'] },
+];
 
 export default function NewDecision() {
   const navigate = useNavigate();
   const toast = useToast();
   const ai = useAiSettings();
   const invalidate = useInvalidateDecision();
-  const [question, setQuestion] = useState('');
+  const [params] = useSearchParams();
+  const [question, setQuestion] = useState(() => params.get('q') ?? '');
   const [useAi, setUseAi] = useState(false);
   const [draft, setDraft] = useState<DecisionDraft | null>(null);
   const [busy, setBusy] = useState<'parse' | 'create' | string | null>(null);
@@ -139,22 +148,27 @@ export default function NewDecision() {
       <section className="section">
         <div className="section-head">
           <h2 className="section-title">Or start from a template</h2>
-          <span className="meta">Structured, with nothing filled in for you</span>
+          <span className="meta">Inputs you must supply are marked; defaults are labelled as assumptions</span>
         </div>
-        <div className="template-grid">
-          {CATEGORIES.map((c) => {
-            const Icon = ICONS[c.icon] ?? Sparkles;
-            return (
-              <button key={c.id} type="button" className="template" onClick={() => void fromTemplate(c.id)} disabled={busy !== null}>
-                <Icon aria-hidden />
-                <span>
-                  <strong>{c.label}</strong>
-                  <small>{c.description}</small>
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        {GROUPS.map((g) => (
+          <div key={g.label} className="template-group">
+            <h3>{g.label}</h3>
+            <div className="template-grid">
+              {CATEGORIES.filter((c) => g.ids.includes(c.id)).map((c) => {
+                const Icon = ICONS[c.icon] ?? Sparkles;
+                return (
+                  <button key={c.id} type="button" className="template" onClick={() => void fromTemplate(c.id)} disabled={busy !== null}>
+                    <Icon aria-hidden />
+                    <span>
+                      <strong>{c.label}</strong>
+                      <small>{c.description}</small>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </section>
     </div>
   );
