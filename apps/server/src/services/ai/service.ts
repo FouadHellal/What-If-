@@ -104,7 +104,7 @@ export async function aiStatus(ctx: AppContext, userId: string): Promise<AiStatu
   };
 }
 
-async function requireAi(ctx: AppContext, user: AuthUser, request: Parameters<typeof recordRequest>[1]) {
+export async function requireAi(ctx: AppContext, user: AuthUser, request: Parameters<typeof recordRequest>[1]) {
   const r = await resolveAi(ctx, user.id);
   if (!r.enabled) throw new AppError(409, 'ai_disabled', 'The AI analyst is turned off. Enable it in Settings → AI analyst.');
   if (!r.cfg) throw new AppError(409, 'ai_not_configured', 'No AI provider is configured. Add one in Settings → AI analyst.');
@@ -119,7 +119,7 @@ async function recordRequest(ctx: AppContext, request: { ip?: string; headers?: 
   await ctx.db.insert(auditLog).values({ userId, action: 'ai.request', ip: request?.ip ?? null, metadata: { provider, model } });
 }
 
-function toAppError(err: unknown): AppError {
+export function toAppError(err: unknown): AppError {
   if (err instanceof AppError) return err;
   if (err instanceof AiProviderError) {
     const status = err.code === 'rate_limited' ? 429 : err.code === 'auth' || err.code === 'not_configured' ? 409 : 502;

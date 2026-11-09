@@ -5,3 +5,5 @@ export * from './templates';
 export * from './parser';
 export * from './example';
 export * from './labels';
+export * from './simulation';
+export * from './intelligence';

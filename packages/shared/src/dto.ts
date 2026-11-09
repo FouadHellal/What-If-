@@ -1,6 +1,6 @@
 /** Response shapes returned by the API. Kept in one place so server and web agree. */
-import type { FlowInput, PriorityWeights, ScenarioScores, SimulationResult, VariableInput, VariableKey } from '@whatif/engine';
-import type { DecisionCategory, DecisionStatus, Preferences, ProfileInput, ValueSourceT } from './schemas';
+import type { FlowInput, PriorityWeights, ScenarioModel, ScenarioScores, SimulationResult, TaxSchedule, VariableInput, VariableKey } from '@whatif/engine';
+import type { DecisionCategory, DecisionSettings, DecisionStatus, Preferences, ProfileInput, ValueSourceT } from './schemas';
 
 export interface UserDTO {
   id: string;
@@ -65,6 +65,7 @@ export interface ScenarioDTO {
   variables: Partial<Record<VariableKey, VariableInput>>;
   flows: FlowInput[];
   scores: ScenarioScores;
+  tax: TaxSchedule | null;
   createdAt: string;
   updatedAt: string;
   latestRun: SimulationRunMeta | null;
@@ -101,6 +102,7 @@ export interface MilestoneDTO {
 export interface DecisionDTO extends Omit<DecisionSummaryDTO, 'preview' | 'scenarioCount'> {
   description: string | null;
   priorities: PriorityWeights | null;
+  settings: DecisionSettings;
   rationale: string | null;
   expectations: string | null;
   decidedAt: string | null;
@@ -245,11 +247,86 @@ export interface AuditEventDTO {
   metadata: Record<string, unknown> | null;
 }
 
+export interface ExperimentMetrics {
+  finalNetWorth: number;
+  p10: number | null;
+  p50: number | null;
+  p90: number | null;
+  shortfallProbability: number | null;
+  lowestCash: number;
+  monthlyNetCashFlowYear1: number;
+}
+
+export interface ExperimentDTO {
+  id: string;
+  decisionId: string;
+  scenarioId: string;
+  scenarioName: string | null;
+  name: string;
+  note: string | null;
+  changes: Record<string, number>;
+  baseVersion: number;
+  /** Whether the scenario has changed since the experiment was run. */
+  stale: boolean;
+  original: ExperimentMetrics;
+  variant: ExperimentMetrics;
+  currency: string;
+  engineVersion: string;
+  createdAt: string;
+}
+
+export interface ExperimentDetailDTO extends ExperimentDTO {
+  baseInputs: ScenarioModel;
+  inputs: ScenarioModel;
+}
+
+export interface EvidenceDTO {
+  id: string;
+  decisionId: string;
+  scenarioId: string | null;
+  label: string;
+  value: number | null;
+  unit: string | null;
+  sourceName: string;
+  sourceUrl: string | null;
+  retrievedOn: string;
+  coverage: string | null;
+  uncertainty: string | null;
+  note: string | null;
+  origin: string;
+  createdAt: string;
+}
+
+export type EvidenceBasis = 'app_data' | 'user_assumption' | 'external' | 'model' | 'interpretation';
+
+export interface AiAnswerPart {
+  text: string;
+  basis: EvidenceBasis;
+}
+
+export interface AiMessageDTO {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  parts: AiAnswerPart[] | null;
+  followUps: string[];
+  suggestedFacts: string[];
+  unverifiedNumbers: string[];
+  provider: string | null;
+  model: string | null;
+  createdAt: string;
+}
+
 export interface OverviewDTO {
   activeDecisions: DecisionSummaryDTO[];
   upcomingMilestones: (MilestoneDTO & { decisionTitle: string; scenarioName: string | null; derived: boolean })[];
   recentScenarios: { id: string; name: string; decisionId: string; decisionTitle: string; updatedAt: string; colorIndex: number }[];
   recentJournal: JournalEntryDTO[];
   counts: { decisions: number; scenarios: number; journal: number; decided: number };
+  /** Decisions that need attention, with the reason. */
+  attention: { decisionId: string; title: string; reason: 'missing_inputs' | 'checkin_due' | 'stale' | 'deciding'; detail: string }[];
+  recentExperiments: { id: string; name: string; decisionId: string; decisionTitle: string; createdAt: string; delta: number; currency: string }[];
+  recentReports: { id: string; title: string; decisionId: string; createdAt: string }[];
+  profileCompleteness: number;
   hasExample: boolean;
 }

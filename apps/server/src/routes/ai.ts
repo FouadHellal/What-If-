@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { aiAnalyzeSchema, aiSettingsSchema } from '@whatif/shared';
-import { aiAnalyses, userSettings } from '../db/schema';
+import { aiAnalyzeSchema, aiChatSchema, aiSettingsSchema } from '@whatif/shared';
+import { aiAnalyses, aiMessages, userSettings } from '../db/schema';
+import { chat, history } from '../services/ai/chat';
 import { audit } from '../lib/audit';
 import { forbidden, notFound, parse } from '../lib/errors';
 import { requireUser } from '../http/auth';
@@ -75,6 +76,31 @@ export async function aiRoutes(app: FastifyInstance) {
     const dto = await runAnalysis(app.ctx, user, request, decision, input.task, input.scenarioId ?? null, profile);
     reply.status(201);
     return dto;
+  });
+
+  app.get<{ Params: { id: string } }>('/api/decisions/:id/ai/chat', async (request) => {
+    const user = requireUser(request);
+    const { id } = parse(z.object({ id: z.uuid() }), request.params);
+    await getDecisionDTO(db, user.id, id);
+    return history(app.ctx, user.id, id);
+  });
+
+  app.post<{ Params: { id: string } }>('/api/decisions/:id/ai/chat', { config: aiLimit }, async (request, reply) => {
+    const user = requireUser(request);
+    const { id } = parse(z.object({ id: z.uuid() }), request.params);
+    const input = parse(aiChatSchema, request.body);
+    const decision = await getDecisionDTO(db, user.id, id);
+    const profile = await getProfile(app, user.id);
+    reply.status(201);
+    return chat(app.ctx, user, request, decision, input.message, profile);
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/decisions/:id/ai/chat', async (request) => {
+    const user = requireUser(request);
+    const { id } = parse(z.object({ id: z.uuid() }), request.params);
+    await getDecisionDTO(db, user.id, id);
+    await db.delete(aiMessages).where(and(eq(aiMessages.decisionId, id), eq(aiMessages.userId, user.id)));
+    return { ok: true };
   });
 
   app.delete<{ Params: { id: string } }>('/api/ai/analyses/:id', async (request) => {

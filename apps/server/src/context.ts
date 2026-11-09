@@ -9,6 +9,8 @@ export interface AppContext {
   db: Db;
   secrets: SecretBox;
   aiFactory: AiProviderFactory;
+  /** HTTP client for external data lookups (injectable for tests). */
+  fetch: typeof fetch;
 }
 
 export interface AuthUser {

@@ -8,13 +8,15 @@ import {
   simulate,
   type FlowInput,
   type ScenarioModel,
+  type SimulationOptions,
   type SimulationResult,
+  type TaxSchedule,
   type VariableInput,
   type VariableKey,
 } from '@whatif/engine';
-import type { ScenarioDTO, ScenarioModelInput, SimulationRunDTO, SimulationRunMeta, ValueSourceT } from '@whatif/shared';
+import { parseSettings, simulationOptions, type DecisionSettings, type ScenarioDTO, type ScenarioModelInput, type SimulationRunDTO, type SimulationRunMeta, type ValueSourceT } from '@whatif/shared';
 import type { Db } from '../db/client';
-import { scenarioFlows, scenarioVariables, scenarios, simulationResults, simulationRuns } from '../db/schema';
+import { decisions, scenarioFlows, scenarioVariables, scenarios, simulationResults, simulationRuns } from '../db/schema';
 import { notFound } from '../lib/errors';
 
 type ScenarioRow = typeof scenarios.$inferSelect;
@@ -55,6 +57,8 @@ export function flowsFromRows(rows: FlowRow[]): FlowInput[] {
       };
       if (r.low !== null) f.low = r.low;
       if (r.high !== null) f.high = r.high;
+      if (r.rate !== null) f.rate = r.rate;
+      if (r.termMonths !== null) f.termMonths = r.termMonths;
       if (r.note) f.note = r.note;
       return f;
     });
@@ -92,6 +96,7 @@ export function toScenarioDTO(row: ScenarioRow, vars: VariableRow[], flows: Flow
     variables: variablesFromRows(vars),
     flows: flowsFromRows(flows),
     scores: row.scores,
+    tax: (row.tax as TaxSchedule | null) ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     latestRun: latestRun ? runMeta(latestRun) : null,
@@ -99,14 +104,28 @@ export function toScenarioDTO(row: ScenarioRow, vars: VariableRow[], flows: Flow
 }
 
 /** The exact engine input for a scenario. The exchange rate is not part of the projection itself. */
-export function toEngineModel(s: Pick<ScenarioDTO, 'startDate' | 'horizonYears' | 'currency' | 'variables' | 'flows'>): ScenarioModel {
-  return {
+export function toEngineModel(s: Pick<ScenarioDTO, 'startDate' | 'horizonYears' | 'currency' | 'variables' | 'flows'> & { tax?: TaxSchedule | null }): ScenarioModel {
+  const m: ScenarioModel = {
     startDate: s.startDate,
     horizonYears: s.horizonYears,
     currency: s.currency,
     variables: s.variables,
     flows: s.flows,
   };
+  if (s.tax && s.tax.brackets.length > 0) m.tax = s.tax;
+  return m;
+}
+
+/** Settings and base currency of the decisions owning these scenarios. */
+async function decisionContext(db: Tx, decisionIds: string[]): Promise<Map<string, { settings: DecisionSettings; baseCurrency: string }>> {
+  const ids = [...new Set(decisionIds)];
+  if (ids.length === 0) return new Map();
+  const rows = await db.select({ id: decisions.id, settings: decisions.settings, baseCurrency: decisions.baseCurrency }).from(decisions).where(inArray(decisions.id, ids));
+  return new Map(rows.map((r) => [r.id, { settings: parseSettings(r.settings), baseCurrency: r.baseCurrency }]));
+}
+
+export function optionsFor(s: ScenarioDTO, ctx: { settings: DecisionSettings; baseCurrency: string } | undefined): SimulationOptions {
+  return simulationOptions(ctx?.settings ?? {}, s, ctx?.baseCurrency ?? s.currency);
 }
 
 /** Replaces a scenario's variables and flows with the given model. Call inside a transaction. */
@@ -143,6 +162,8 @@ export async function writeModel(tx: Tx, scenarioId: string, model: Pick<Scenari
       startMonth: f.startMonth,
       endMonth: f.endMonth ?? null,
       annualGrowth: f.annualGrowth ?? null,
+      rate: f.rate ?? null,
+      termMonths: f.termMonths ?? null,
       source: f.source,
       note: f.note ?? null,
     };
@@ -166,8 +187,9 @@ export async function hydrateScenarios(db: Tx, rows: ScenarioRow[]): Promise<Sce
       null,
     ),
   );
-  // The current run is the one whose input hash matches the scenario's current model.
-  const hashes = dtos.map((d) => hashInputs(toEngineModel(d), { seed: DEFAULT_SEED, runs: DEFAULT_RUNS }));
+  // The current run is the one whose input hash matches the scenario's current model and options.
+  const ctxs = await decisionContext(db, rows.map((r) => r.decisionId));
+  const hashes = dtos.map((d) => hashInputs(toEngineModel(d), optionsFor(d, ctxs.get(d.decisionId))));
   const runs = await db
     .select()
     .from(simulationRuns)
@@ -203,7 +225,7 @@ export async function loadScenariosForDecision(db: Tx, decisionId: string): Prom
  */
 export async function ensureRun(db: Tx, userId: string, scenario: ScenarioDTO): Promise<SimulationRunDTO> {
   const model = toEngineModel(scenario);
-  const options = { seed: DEFAULT_SEED, runs: DEFAULT_RUNS };
+  const options = optionsFor(scenario, (await decisionContext(db, [scenario.decisionId])).get(scenario.decisionId));
   const hash = hashInputs(model, options);
   const existing = await db
     .select()
@@ -228,8 +250,8 @@ export async function ensureRun(db: Tx, userId: string, scenario: ScenarioDTO): 
       scenarioVersion: scenario.version,
       engineVersion: ENGINE_VERSION,
       inputHash: hash,
-      seed: options.seed,
-      runs: options.runs,
+      seed: options.seed ?? DEFAULT_SEED,
+      runs: options.runs ?? DEFAULT_RUNS,
       inputs: { model, options },
       durationMs,
     })

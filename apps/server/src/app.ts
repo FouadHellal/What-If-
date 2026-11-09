@@ -18,11 +18,13 @@ import { decisionRoutes } from './routes/decisions';
 import { journalRoutes } from './routes/journal';
 import { aiRoutes } from './routes/ai';
 import { reportRoutes } from './routes/reports';
+import { labRoutes } from './routes/lab';
 
 export interface BuildOptions {
   config: Config;
   database: Database;
   aiFactory?: AiProviderFactory;
+  fetchImpl?: typeof fetch;
   logger?: boolean;
 }
 
@@ -48,6 +50,7 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
     db: database.db,
     secrets: new SecretBox(config.appSecret),
     aiFactory: opts.aiFactory ?? defaultAiFactory,
+    fetch: opts.fetchImpl ?? fetch,
   };
   app.decorate('ctx', ctx);
   app.setErrorHandler(errorHandler);
@@ -102,6 +105,7 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   await app.register(journalRoutes);
   await app.register(aiRoutes);
   await app.register(reportRoutes);
+  await app.register(labRoutes);
 
   app.all('/api/*', async (_req, reply) => {
     reply.status(404);

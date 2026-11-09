@@ -36,6 +36,7 @@ const envSchema = z.object({
   AI_DAILY_LIMIT: z.coerce.number().int().min(1).max(10_000).default(50),
   AI_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(600_000).default(90_000),
   AI_ALLOW_USER_CONFIG: bool(true),
+  EXTERNAL_DATA: z.enum(['on', 'off']).default('on'),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -59,6 +60,8 @@ export interface Config {
   webDist: string | null;
   scryptCost: number;
   rateLimitPerMinute: number;
+  /** Allow user-triggered lookups of public data (ECB exchange rates, World Bank inflation). */
+  externalData: boolean;
   authRateLimitPerMinute: number;
   ai: {
     provider: 'openai' | 'anthropic' | 'ollama' | null;
@@ -121,6 +124,7 @@ export function loadConfig(source: Record<string, string | undefined> = process.
     webDist: env.WEB_DIST ?? null,
     scryptCost: env.SCRYPT_COST,
     rateLimitPerMinute: env.RATE_LIMIT_PER_MINUTE,
+    externalData: env.EXTERNAL_DATA === 'on',
     authRateLimitPerMinute: env.AUTH_RATE_LIMIT_PER_MINUTE,
     ai: {
       provider,

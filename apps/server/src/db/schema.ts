@@ -114,6 +114,8 @@ export const decisions = pgTable(
     baseCurrency: text('base_currency').notNull(),
     horizonYears: integer('horizon_years').notNull(),
     priorities: jsonb('priorities').$type<Record<string, number> | null>(),
+    /** Simulation count, correlations, goals and analyst memory (validated by decisionSettingsSchema). */
+    settings: jsonb('settings').$type<Record<string, unknown>>().notNull().default({}),
     isExample: boolean('is_example').notNull().default(false),
     origin: text('origin').notNull().default('manual'),
     chosenScenarioId: uuid('chosen_scenario_id').references((): AnyPgColumn => scenarios.id, { onDelete: 'set null' }),
@@ -147,6 +149,8 @@ export const scenarios = pgTable(
     exchangeRateToBase: doublePrecision('exchange_rate_to_base'),
     exchangeRateSource: text('exchange_rate_source'),
     scores: jsonb('scores').$type<Record<string, number>>().notNull().default({}),
+    /** Optional user-defined progressive tax schedule. */
+    tax: jsonb('tax').$type<Record<string, unknown> | null>(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -184,6 +188,8 @@ export const scenarioFlows = pgTable(
     startMonth: integer('start_month').notNull().default(0),
     endMonth: integer('end_month'),
     annualGrowth: doublePrecision('annual_growth'),
+    rate: doublePrecision('rate'),
+    termMonths: integer('term_months'),
     source: text('source').notNull().default('user'),
     note: text('note'),
   },
@@ -320,4 +326,72 @@ export const auditLog = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('audit_user_created_idx').on(t.userId, t.createdAt)],
+);
+
+// ── v2: Decision Lab, evidence, analyst conversation ────────────────────────
+
+export const experiments = pgTable(
+  'experiments',
+  {
+    id: id(),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    decisionId: uuid('decision_id').notNull().references(() => decisions.id, { onDelete: 'cascade' }),
+    scenarioId: uuid('scenario_id').notNull().references(() => scenarios.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    note: text('note'),
+    /** Changed inputs: variable key or flow:<id> → value. */
+    changes: jsonb('changes').$type<Record<string, number>>().notNull(),
+    /** Scenario version the experiment was based on, and the full engine inputs used. */
+    baseVersion: integer('base_version').notNull(),
+    baseInputs: jsonb('base_inputs').notNull(),
+    inputs: jsonb('inputs').notNull(),
+    options: jsonb('options').notNull(),
+    /** Key metrics of the original and the variant, for history lists. */
+    summary: jsonb('summary').notNull(),
+    engineVersion: text('engine_version').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('experiments_decision_idx').on(t.decisionId, t.createdAt)],
+);
+
+export const evidence = pgTable(
+  'evidence',
+  {
+    id: id(),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    decisionId: uuid('decision_id').notNull().references(() => decisions.id, { onDelete: 'cascade' }),
+    scenarioId: uuid('scenario_id').references(() => scenarios.id, { onDelete: 'set null' }),
+    label: text('label').notNull(),
+    value: doublePrecision('value'),
+    unit: text('unit'),
+    sourceName: text('source_name').notNull(),
+    sourceUrl: text('source_url'),
+    retrievedOn: text('retrieved_on').notNull(),
+    coverage: text('coverage'),
+    uncertainty: text('uncertainty'),
+    note: text('note'),
+    /** 'manual' or the research provider that fetched it. */
+    origin: text('origin').notNull().default('manual'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('evidence_decision_idx').on(t.decisionId, t.createdAt)],
+);
+
+export const aiMessages = pgTable(
+  'ai_messages',
+  {
+    id: id(),
+    userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    decisionId: uuid('decision_id').notNull().references(() => decisions.id, { onDelete: 'cascade' }),
+    role: text('role', { enum: ['user', 'assistant'] }).notNull(),
+    content: text('content').notNull(),
+    /** Assistant only: structured answer with evidence types per statement. */
+    output: jsonb('output'),
+    unverifiedNumbers: jsonb('unverified_numbers').$type<string[]>().notNull().default([]),
+    provider: text('provider'),
+    model: text('model'),
+    runIds: jsonb('run_ids').$type<string[]>().notNull().default([]),
+    createdAt: createdAt(),
+  },
+  (t) => [index('ai_messages_decision_idx').on(t.decisionId, t.createdAt)],
 );

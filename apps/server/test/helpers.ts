@@ -26,11 +26,17 @@ export function fakeAi(): FakeAi {
   return fake;
 }
 
+export interface FakeFetch {
+  calls: string[];
+  respond: (url: string) => { status: number; body: unknown };
+}
+
 export interface TestApp {
   app: FastifyInstance;
   database: Database;
   config: Config;
   ai: FakeAi;
+  net: FakeFetch;
   close: () => Promise<void>;
 }
 
@@ -65,13 +71,20 @@ export async function createTestApp(overrides: Partial<Config> = {}, env: Record
   await database.migrate();
   shared = database;
   const ai = fakeAi();
-  const app = await buildApp({ config, database, aiFactory: ai.factory, logger: false });
+  const net: FakeFetch = { calls: [], respond: () => ({ status: 404, body: {} }) };
+  const fetchImpl = (async (url: string | URL) => {
+    net.calls.push(String(url));
+    const r = net.respond(String(url));
+    return new Response(JSON.stringify(r.body), { status: r.status, headers: { 'content-type': 'application/json' } });
+  }) as typeof fetch;
+  const app = await buildApp({ config, database, aiFactory: ai.factory, fetchImpl, logger: false });
   await app.ready();
   return {
     app,
     database,
     config,
     ai,
+    net,
     close: async () => {
       await app.close();
       await database.close();

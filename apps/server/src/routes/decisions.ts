@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { and, asc, count, desc, eq, gte, inArray, max, ne, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, isNull, max, ne, sql } from 'drizzle-orm';
 import { z } from 'zod';
-import { addMonths, simulate } from '@whatif/engine';
+import { VARIABLES, addMonths, simulate } from '@whatif/engine';
 import {
   assumptionInputSchema,
   createDecisionSchema,
@@ -11,6 +11,7 @@ import {
   listDecisionsQuery,
   milestoneSchema,
   parseQuestionSchema,
+  parseSettings,
   recordDecisionSchema,
   scenarioDraftSchema,
   updateDecisionSchema,
@@ -22,7 +23,7 @@ import {
   type Paginated,
   type DecisionSummaryDTO,
 } from '@whatif/shared';
-import { assumptions, decisions, journalEntries, milestones, scenarios } from '../db/schema';
+import { assumptions, decisions, experiments, journalEntries, milestones, reports, scenarioVariables, scenarios } from '../db/schema';
 import { audit } from '../lib/audit';
 import { badRequest, conflict, notFound, parse } from '../lib/errors';
 import { requireUser } from '../http/auth';
@@ -91,7 +92,79 @@ export async function decisionRoutes(app: FastifyInstance) {
       db.select({ n: count() }).from(decisions).where(and(eq(decisions.userId, user.id), eq(decisions.status, 'decided'))),
     ]);
     const hasExample = (await db.select({ id: decisions.id }).from(decisions).where(and(eq(decisions.userId, user.id), eq(decisions.isExample, true))).limit(1)).length > 0;
+
+    // What needs attention — each item leads to an action.
+    const attention: OverviewDTO['attention'] = [];
+    const openDecisions = await db
+      .select({ id: decisions.id, title: decisions.title, status: decisions.status, updatedAt: decisions.updatedAt, decidedAt: decisions.decidedAt })
+      .from(decisions)
+      .where(and(eq(decisions.userId, user.id), ne(decisions.status, 'archived')))
+      .orderBy(desc(decisions.updatedAt))
+      .limit(50);
+    const openIds = openDecisions.map((d) => d.id);
+    if (openIds.length) {
+      const important = VARIABLES.filter((d) => d.important && !d.hasSystemDefault).map((d) => d.key);
+      const missing = await db
+        .select({ decisionId: scenarios.decisionId, n: count() })
+        .from(scenarioVariables)
+        .innerJoin(scenarios, eq(scenarios.id, scenarioVariables.scenarioId))
+        .where(and(inArray(scenarios.decisionId, openIds), eq(scenarios.status, 'active'), isNull(scenarioVariables.value), inArray(scenarioVariables.key, important)))
+        .groupBy(scenarios.decisionId);
+      const lastCheckins = await db
+        .select({ decisionId: journalEntries.decisionId, last: max(journalEntries.entryDate) })
+        .from(journalEntries)
+        .where(and(eq(journalEntries.userId, user.id), eq(journalEntries.type, 'checkin'), inArray(journalEntries.decisionId, openIds)))
+        .groupBy(journalEntries.decisionId);
+      const now = Date.now();
+      for (const d of openDecisions) {
+        const m = missing.find((x) => x.decisionId === d.id);
+        if (m && Number(m.n) > 0 && d.status !== 'decided') {
+          attention.push({ decisionId: d.id, title: d.title, reason: 'missing_inputs', detail: `${m.n} key assumption${Number(m.n) === 1 ? '' : 's'} still missing — results treat them as zero.` });
+          continue;
+        }
+        if (d.status === 'decided' && d.decidedAt) {
+          const last = lastCheckins.find((c) => c.decisionId === d.id)?.last;
+          const since = last ? new Date(`${last}T00:00:00Z`).getTime() : d.decidedAt.getTime();
+          if (now - since > 90 * 86_400_000) {
+            attention.push({ decisionId: d.id, title: d.title, reason: 'checkin_due', detail: last ? 'Last check-in was over three months ago.' : 'No check-in since you decided — compare reality with the plan.' });
+          }
+          continue;
+        }
+        if (d.status === 'deciding') {
+          attention.push({ decisionId: d.id, title: d.title, reason: 'deciding', detail: 'Marked as deciding — review the summary and record your choice.' });
+          continue;
+        }
+        if (now - d.updatedAt.getTime() > 30 * 86_400_000) {
+          attention.push({ decisionId: d.id, title: d.title, reason: 'stale', detail: 'Untouched for over a month. Archive it, or revisit the assumptions.' });
+        }
+      }
+    }
+    const [recentExp, recentRep] = await Promise.all([
+      db
+        .select({ e: experiments, decisionTitle: decisions.title })
+        .from(experiments)
+        .innerJoin(decisions, eq(decisions.id, experiments.decisionId))
+        .where(eq(experiments.userId, user.id))
+        .orderBy(desc(experiments.createdAt))
+        .limit(5),
+      db
+        .select({ id: reports.id, title: reports.title, decisionId: reports.decisionId, createdAt: reports.createdAt })
+        .from(reports)
+        .where(eq(reports.userId, user.id))
+        .orderBy(desc(reports.createdAt))
+        .limit(4),
+    ]);
+    const profile = await getProfile(app, user.id);
+    const profileFields = [profile.country, profile.city, profile.occupation, profile.annualIncome, profile.effectiveTaxRate, profile.monthlyHousingCost, profile.monthlyLivingCost, profile.savings, profile.riskTolerance, profile.planningHorizonYears];
+    const profileCompleteness = Math.round((profileFields.filter((f) => f !== null && f !== undefined && f !== '').length / profileFields.length) * 100);
     return {
+      attention: attention.slice(0, 6),
+      recentExperiments: recentExp.map((r) => {
+        const sum = r.e.summary as { original: { finalNetWorth: number }; variant: { finalNetWorth: number }; currency: string };
+        return { id: r.e.id, name: r.e.name, decisionId: r.e.decisionId, decisionTitle: r.decisionTitle, createdAt: r.e.createdAt.toISOString(), delta: sum.variant.finalNetWorth - sum.original.finalNetWorth, currency: sum.currency };
+      }),
+      recentReports: recentRep.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
+      profileCompleteness,
       activeDecisions: await summarize(db, active),
       upcomingMilestones: upcoming.map((u) => ({ ...milestoneDTO(u.m), decisionTitle: u.decisionTitle, scenarioName: u.scenarioName, derived: false })),
       recentScenarios: recentScen.map((s) => ({ ...s, updatedAt: s.updatedAt.toISOString() })),
@@ -158,8 +231,14 @@ export async function decisionRoutes(app: FastifyInstance) {
     const user = requireUser(request);
     const { id } = parse(idParam, request.params);
     const input = parse(updateDecisionSchema, request.body);
-    await getOwnedDecision(db, user.id, id);
-    await db.update(decisions).set({ ...input, updatedAt: new Date() }).where(eq(decisions.id, id));
+    const current = await getOwnedDecision(db, user.id, id);
+    const { settings: settingsPatch, ...rest } = input;
+    const patch: Partial<typeof decisions.$inferInsert> = { ...rest, updatedAt: new Date() };
+    if (settingsPatch) {
+      const prev = parseSettings(current.settings);
+      patch.settings = { ...prev, ...settingsPatch, memory: settingsPatch.memory ? { ...prev.memory, ...settingsPatch.memory } : prev.memory };
+    }
+    await db.update(decisions).set(patch).where(eq(decisions.id, id));
     return getDecisionDTO(db, user.id, id);
   });
 
@@ -284,6 +363,7 @@ export async function decisionRoutes(app: FastifyInstance) {
           exchangeRateToBase: input.exchangeRateToBase,
           exchangeRateSource: input.exchangeRateSource ?? null,
           scores: input.scores ?? s.scores,
+          tax: input.tax ?? null,
           updatedAt: new Date(),
         })
         .where(and(eq(scenarios.id, id), eq(scenarios.version, input.expectedVersion)))

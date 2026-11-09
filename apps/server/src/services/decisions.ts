@@ -7,7 +7,7 @@ import type {
   MilestoneDTO,
   ScenarioDraft,
 } from '@whatif/shared';
-import { exampleDecision } from '@whatif/shared';
+import { exampleDecision, parseSettings } from '@whatif/shared';
 import type { Db } from '../db/client';
 import { assumptions, decisions, journalEntries, milestones, scenarios, simulationResults, simulationRuns } from '../db/schema';
 import { notFound } from '../lib/errors';
@@ -72,6 +72,7 @@ export async function insertScenario(tx: Tx, userId: string, decisionId: string,
       exchangeRateToBase: draft.exchangeRateToBase,
       exchangeRateSource: draft.exchangeRateSource ?? null,
       scores: draft.scores ?? {},
+      tax: draft.tax ?? null,
     })
     .returning({ id: scenarios.id });
   const scenarioId = row!.id;
@@ -137,6 +138,7 @@ export async function getDecisionDTO(db: Tx, userId: string, id: string): Promis
     isExample: d.isExample,
     chosenScenarioId: d.chosenScenarioId,
     priorities: d.priorities,
+    settings: parseSettings(d.settings),
     rationale: d.rationale,
     expectations: d.expectations,
     decidedAt: d.decidedAt?.toISOString() ?? null,
